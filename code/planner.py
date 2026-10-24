@@ -38,7 +38,10 @@ def _step(phase: str, system: str, resource: str, operation: str,
 def build_plan(observations: list[Any]) -> tuple[str, list[dict[str, Any]]]:
     decisions = evaluate_all(observations)
     # No evidence cannot establish that the required treatment is complete.
-    incomplete = not decisions or any(item.violation for item in decisions)
+    incomplete = not decisions or any(
+        item.violation or getattr(item.observation, "source_type", "evidence") == "activity_claim"
+        for item in decisions
+    )
     status = "INCOMPLETE" if incomplete else "COMPLETE"
     steps: list[dict[str, Any]] = []
 

@@ -135,6 +135,8 @@ class Observation:
     observed_at: str
     state_hint: str
     category: str
+    source_type: str = "evidence"
+    link_basis: str = ""
 
 
 def _snapshot_absence_observation(
@@ -172,6 +174,14 @@ def _identify(resource_id: str, obj: Any, default_system: str = "") -> tuple[str
         system = obj["origin_system"]
     system = {"support_replica": "support_platform"}.get(system, system)
     if isinstance(obj, dict):
+        # A contact lookup carrying an explicit opt-in field is a marketing
+        # contact record by its own event/consent fields. The marketing rule
+        # requires deletion; it is not an analytics profile merely because
+        # the service storing it is the analytics platform.
+        event_name = str(obj.get("event", obj.get("event_name", ""))).casefold()
+        if ("contact_lookup" in event_name and
+                any(key in obj for key in ("email_opt_in", "marketing_opt_in", "subscription_status"))):
+            category = "MARKETING_PROFILE"
         collection = str(obj.get("collection_name", obj.get("collection", ""))).casefold()
         record_type = str(obj.get("record_type", "")).casefold()
         event = str(obj.get("event", obj.get("event_name", ""))).casefold()
@@ -201,6 +211,34 @@ def _direct_resources(obj: Any) -> list[str]:
     return sorted(result)
 
 
+OWNER_LINK_FIELDS = {
+    "user_id", "subject_reference", "customer_reference", "linked_user_id",
+    "linked_subject_reference", "owner_user_id", "requester_user_id",
+    "customer_user_id", "account_user_id",
+}
+
+
+def _explicit_subject_refs(obj: Any) -> set[str]:
+    """Extract stable subject references only from recognized link fields."""
+    refs: set[str] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if str(key).casefold() in OWNER_LINK_FIELDS:
+                    values = child if isinstance(child, list) else [child]
+                    for item in values:
+                        if isinstance(item, str) and re.fullmatch(r"user_\d+", item.strip(), re.I):
+                            refs.add(item.strip().casefold())
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(obj)
+    return refs
+
+
 def _structured_subject_match(obj: Any, user_id: str, identifiers: set[str]) -> bool:
     """Match identity through known record-link fields, not unrelated payload text."""
     link_names = {"subject_reference", "user_id", "customer_reference", "owner_email",
@@ -223,7 +261,10 @@ def _structured_subject_match(obj: Any, user_id: str, identifiers: set[str]) -> 
     return visit(obj)
 
 
-def _state_hint(category: str, obj: Any, cutoff: datetime | None) -> str:
+def _state_hint(
+    category: str, obj: Any, cutoff: datetime | None,
+    identifiers: set[str] | None = None, user_id: str = "",
+) -> str:
     """Extract an observed state clue from one resource record/line."""
     raw = " ".join(_flatten(obj))
     if re.search(r"\b(NOT_FOUND|NOT FOUND|ABSENT|rows\s*[=:]\s*0|http_status\s*[=:]\s*404|status_code\s*[=:]\s*404)\b", raw, re.I):
@@ -249,16 +290,40 @@ def _state_hint(category: str, obj: Any, cutoff: datetime | None) -> str:
     if category in {"ANALYTICS_PROFILE", "PRODUCT_TELEMETRY", "ACCOUNT_TOMBSTONE"}:
         direct_fields = {"email", "phone", "email_hash", "full_name", "name",
                          "display_name", "owner_email", "customer_email", "requester_email"}
-        if any(str(obj.get(k) or "").strip().casefold() not in {"", "null", "none"}
-               for k in direct_fields):
+        nonempty_direct = any(str(obj.get(k) or "").strip().casefold() not in {"", "null", "none"}
+                              for k in direct_fields)
+        subject_refs = {"user_id", "subject_reference", "customer_reference",
+                        "linked_user_id", "linked_subject_reference"}
+        has_stable_link = any(
+            str(obj.get(k) or "").strip().casefold() == user_id.casefold()
+            for k in subject_refs
+        )
+        correlation = str(obj.get("correlation_key", "")).strip().casefold()
+        is_subject_correlation = bool(correlation and identifiers and
+                                      correlation in {v.strip().casefold() for v in identifiers})
+        if nonempty_direct or (category != "ACCOUNT_TOMBSTONE" and
+                               (has_stable_link or is_subject_correlation)):
             return "EXPOSED_PII"
+        # A row count or successful lookup establishes presence, not
+        # anonymization. Only structured records with identifier columns can
+        # prove the fields were removed.
+        if any(key in obj for key in ("rows", "row_count", "record_count")):
+            return "PRESENT"
         return "ANONYMIZED" if category != "ACCOUNT_TOMBSTONE" else "REDACTED"
     if category in {"SUPPORT_MESSAGE", "SUPPORT_ATTACHMENT", "EMAIL_DELIVERY_LOG"}:
         pii_fields = {"email", "phone", "email_hash", "requester_email", "requester_phone",
-                      "owner_email", "customer_email", "message_text", "message_excerpt"}
+                      "requester_name", "owner_email", "customer_email", "full_name"}
         if any(str(obj.get(k) or "").strip().casefold() not in {"", "null", "none"}
                for k in pii_fields):
             return "EXPOSED_PII"
+        free_text = " ".join(str(obj.get(k) or "") for k in
+                             ("message_text", "message_excerpt", "body", "attachment_text"))
+        for identifier in identifiers or ():
+            needle = identifier.strip().casefold()
+            if needle and needle in free_text.casefold():
+                return "EXPOSED_PII"
+        if any(key in obj for key in pii_fields):
+            return "REDACTED"
     if category == "SECURITY_AUDIT_LOG":
         until = _dt(str(obj.get("retention_until", "")))
         return "RETAINED" if not until or not cutoff or until >= cutoff else "RETENTION_EXPIRED"
@@ -300,18 +365,31 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
     user_id, identifiers = resolve_identity(case["email"], case["audit_at"])
     cutoff = _dt(case["audit_at"])
     found: dict[tuple[str, str], Observation] = {}
+    explicit_owners: dict[str, set[str]] = {}
 
     def add(resource_id: str, evidence_id: str, observed: datetime | None,
-            state_hint: str = "PRESENT", system: str = "", obj: Any = None) -> None:
+            state_hint: str = "PRESENT", system: str = "", obj: Any = None,
+            link_basis: str = "", source_type: str = "evidence") -> None:
         if cutoff and observed and observed > cutoff:
             return
         actual_system, category = _identify(resource_id, obj, system)
         key = (actual_system, resource_id)
         stamp = observed.isoformat() if observed else ""
+        candidate = Observation(actual_system, resource_id, evidence_id,
+                                 stamp, state_hint, category, source_type, link_basis)
         old = found.get(key)
-        if old is None or stamp > old.observed_at:
-            found[key] = Observation(actual_system, resource_id, evidence_id,
-                                     stamp, state_hint, category)
+        state_priority = {
+            "PRESENT": 0, "ACTIVE": 0, "RESTORE_ALLOWED": 0,
+            "EXPOSED_PII": 1, "ABSENT": 2, "REDACTED": 2,
+            "ANONYMIZED": 2, "DISABLED": 2, "RESTORE_BLOCKED": 2,
+            "RETAINED": 2, "RETENTION_EXPIRED": 2, "HOLD_EXPIRED": 2,
+        }
+        candidate_key = (source_type == "evidence", stamp,
+                         state_priority.get(state_hint, 1))
+        old_key = ((old.source_type == "evidence"), old.observed_at,
+                   state_priority.get(old.state_hint, 1)) if old else None
+        if old is None or candidate_key > old_key:
+            found[key] = candidate
 
     for item in _manifest():
         captured = _dt(item.get("captured_at", ""))
@@ -363,20 +441,27 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
             continue
 
         for obj in objects:
-            if not _direct_resources(obj):
+            ids = _direct_resources(obj)
+            if not ids:
                 continue
-            if not (_structured_subject_match(obj, user_id, identifiers) or
-                    _is_subject_match(obj, user_id, identifiers)):
+            owners = _explicit_subject_refs(obj)
+            for resource_id in ids:
+                explicit_owners.setdefault(resource_id, set()).update(owners)
+            structured_link = _structured_subject_match(obj, user_id, identifiers)
+            identifier_link = _is_subject_match(obj, user_id, identifiers)
+            if not (structured_link or identifier_link):
                 continue
             observed = _observation_time(obj) or captured
-            ids = _direct_resources(obj)
             # The origin/target/system on the record overrides prefix defaults.
             source_system = next((str(obj[k]) for k in ("system", "target_system", "service")
                                   if isinstance(obj, dict) and obj.get(k)), "")
             category = _identify(ids[0], obj, source_system)[1]
-            hint = _state_hint(category, obj, cutoff)
+            hint = _state_hint(category, obj, cutoff, identifiers, user_id)
+            link_basis = ("structured subject field" if structured_link
+                          else "current/historical identifier match")
             for resource_id in sorted(set(ids)):
-                add(resource_id, item["file_id"], observed, hint, source_system, obj)
+                add(resource_id, item["file_id"], observed, hint, source_system, obj,
+                    link_basis, "evidence")
 
     activity_rows = loaders.read_activity()
     # Build a cutoff-bounded resource graph. Identity-bearing catalog events
@@ -391,6 +476,18 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
         refs = set(RESOURCE_RE.findall(event.get("details", "")))
         if rid and RESOURCE_RE.fullmatch(rid):
             refs.add(rid)
+        detail = event.get("details", "")
+        owner_refs = {
+            value.casefold() for value in re.findall(
+                r"\b(?:user_id|subject_reference|customer_reference|owner_user_id|"
+                r"requester_user_id|linked_user_id)\s*[:=]\s*(user_\d+)\b",
+                detail, re.I,
+            )
+        }
+        if event.get("event_type", "").upper() == "LINK_RESOURCE_IDENTITY":
+            owner_refs.update(value.casefold() for value in re.findall(r"\buser_\d+\b", detail, re.I))
+        for resource_id in refs:
+            explicit_owners.setdefault(resource_id, set()).update(owner_refs)
         for key in refs:
             graph.setdefault(key, set()).update(refs - {key})
             event_by_resource.setdefault(key, []).append((event, event_time))
@@ -419,7 +516,40 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
         for event, event_time in event_by_resource.get(resource_id, ()):
             system = event.get("target_system", "")
             add(resource_id, event.get("activity_id", ""), event_time,
-                "PRESENT", system)
+                "PRESENT", system, None,
+                "identity-bearing activity link" if resource_id in seeds else
+                "explicit resource reference from linked activity",
+                "activity_claim")
+
+    # A scoped, explicitly empty structured snapshot is a direct absence
+    # observation for resources already linked to this subject. The activity
+    # link supplies identity; the snapshot supplies state.
+    for existing in list(found.values()):
+        if existing.link_basis not in {
+                "structured subject field", "current/historical identifier match",
+                "identity-bearing activity link"}:
+            continue
+        for item in _manifest():
+            captured = _dt(item.get("captured_at", ""))
+            if cutoff and captured and captured > cutoff:
+                continue
+            path = loaders.evidence_path(item["file_path"])
+            if path.suffix.casefold() != ".json":
+                continue
+            absent = _snapshot_absence_observation(item, existing.resource_id,
+                                                   existing.system_id)
+            if absent:
+                add(existing.resource_id, item["file_id"], _dt(absent.observed_at),
+                    "ABSENT", existing.system_id, None, existing.link_basis, "evidence")
+
+    # A resource with explicit ownership evidence for a different stable user
+    # is a decoy for this subject, even if its identifier appears nearby.
+    found = {
+        key: observation
+        for key, observation in found.items()
+        if not any(owner != user_id.casefold()
+                   for owner in explicit_owners.get(observation.resource_id, set()))
+    }
 
     # Preserve the best eligible observation for each unique system/resource pair.
     return sorted(found.values(), key=lambda o: (o.system_id, o.resource_id))

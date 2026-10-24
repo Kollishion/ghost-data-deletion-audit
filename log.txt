@@ -305,3 +305,60 @@ branch=main
 repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+## [2026-10-24T17:03:18Z] Diagnose and correct sample status mismatches
+
+User Prompt (verbatim, secrets redacted):
+Diagnose the 8 sample status mismatches (cases 01-04, 12, 26-28) before changing anything. For each case print compactly:
+- predicted status vs expected status
+- every finding the pipeline produced, with resource, operation, evidence_id, the observation that triggered it (its timestamp, state, and how it was linked to the user)
+- for COMPLETE-expected cases: which observation made the pipeline think a violation exists, and what a later or conflicting observation for the same resource says
+- for case_12: which expected finding is missing and why discovery or policy did not produce it
+
+Then group the causes and implement fixes in this order, rerunning python code/evaluation/evaluate.py after each and reporting status accuracy and sequence accuracy:
+1. Per-resource state reconstruction: the latest eligible observation at or before audit_at decides state (absent after present means absent). Check that explicit absence observations (null profile, 404, rows=0, empty records) are recognized.
+2. Require a grounded link before creating a violation finding; ensure activity-only claims (reported_result alone) never create a finding.
+3. Check for extra resources that are not in the expected set and see whether an ownership-elimination rule helps (a resource explicitly linked to another user_id in any eligible event or record is excluded).
+Do not hardcode case_ids or resource_ids. Update PROGRESS.md. Print only before/after metrics and the remaining mismatches grouped by cause.
+
+Agent Response Summary:
+Diagnosed all eight cases before editing, then fixed equal-time state precedence and attributed analytics correlation keys, corrected support PII detection, suppressed findings based only on activity claims, and excluded explicitly other-owned resources. Sample status accuracy moved from 24/32 to 29/32; sequence accuracy remained 5/32 after each ordered fix. Regenerated output.csv for all 518 cases, validated it, and updated PROGRESS.md; explicit ownership elimination did not affect sample scores.
+
+Actions:
+* Updated code/discovery.py, code/policy.py, and code/planner.py.
+* Ran code/evaluation/evaluate.py after each of the three fixes; ran code/main.py and code/validate_output.py after the final changes.
+* Updated PROGRESS.md and appended this turn to log.txt.
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+## [2026-10-24T22:48:45+05:30] Add multiset evaluator and diagnose extra steps
+
+User Prompt (verbatim, secrets redacted):
+1. Add a second score to evaluate.py that ignores step_no: compare (phase, operation, system_id, resource_id, state, evidence_id) as a multiset per case. Report precision/recall/F1 with and without step_no, and also report per-case counts of missing vs extra steps. Also add a "renumbered sequence" score: after removing step_no, does the ordered list match.
+
+2. Using that score, list the extra steps (predicted, not expected) grouped by cause. For the biggest groups print 3 examples each with the resource, operation, and the observation that created it. Check specifically whether extras are (a) resources owned by a user other than the case user, (b) resources observed before requested_at, (c) already-compliant resources that the sample does not verify, (d) duplicates under different system_ids. Fix the cause only with rules that are grounded in the data (no case_ids, no resource numbering).
+
+3. case_12 / analytics_9914: print the raw record for it (all fields) and the rule it is governed by. Decide the category from the record's own fields, not the resource prefix. Explain why the sample expects DELETE_RECORD. If a data-grounded rule explains it, implement it; if not, leave the behaviour as is and say so.
+
+4. Re-run sample evaluation and the full run, validate, update PROGRESS.md, and print only: the new with/without-step_no metrics, the extras grouped by cause with counts, and the case_12 finding.
+
+Agent Response Summary:
+Added per-case multiset scoring and renumbered-sequence scoring to the evaluator. The extra-step diagnosis found no surviving other-owner or cross-system duplicates; evidence supports eight sampled omissions of policy violations, two pre-request activity-only verifications, and one compliant absence verification omitted by the sample. Reclassified the case_12 contact lookup from its event and opt-in fields under the marketing deletion rule, then reran sample evaluation, full output generation, validation, and updated progress.
+
+Actions:
+* Edited code/evaluation/evaluate.py and code/discovery.py
+* Ran python code/evaluation/evaluate.py
+* Ran python code/main.py and python code/validate_output.py
+* Updated PROGRESS.md
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

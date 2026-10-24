@@ -34,6 +34,22 @@ def evaluate_observation(observation: Any) -> PolicyDecision:
         return PolicyDecision(observation, find, find_state, remediate,
                               remediate_state, verify, verify_state, violation)
 
+    # Activity rows can nominate resources for review but never establish the
+    # resulting resource state. Do not turn reported_result into a finding.
+    if getattr(observation, "source_type", "evidence") == "activity_claim":
+        verify = {
+            "DATA_FLOW": ("VERIFY_DATA_FLOW_DISABLED", "DISABLED"),
+            "BACKUP_ARCHIVE": ("VERIFY_RESTORE_BLOCKED", "BLOCKED"),
+            "SECURITY_AUDIT_LOG": ("VERIFY_RECORD_PRESENT", "PRESENT"),
+            "LEGAL_HOLD_RECORD": ("VERIFY_RECORD_PRESENT", "PRESENT"),
+            "SUPPORT_MESSAGE": ("VERIFY_RECORD_REDACTED", "REDACTED"),
+            "EMAIL_DELIVERY_LOG": ("VERIFY_RECORD_REDACTED", "REDACTED"),
+            "ANALYTICS_PROFILE": ("VERIFY_RECORD_ANONYMIZED", "ANONYMIZED"),
+            "PRODUCT_TELEMETRY": ("VERIFY_RECORD_ANONYMIZED", "ANONYMIZED"),
+            "ACCOUNT_TOMBSTONE": ("VERIFY_RECORD_REDACTED", "REDACTED"),
+        }.get(category, ("VERIFY_RECORD_ABSENT", "ABSENT"))
+        return decision(None, None, None, None, verify[0], verify[1], False)
+
     if category in DELETE_CATEGORIES:
         if state == "ABSENT":
             return decision(None, None, None, None, "VERIFY_RECORD_ABSENT", "ABSENT", False)

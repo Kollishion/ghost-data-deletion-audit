@@ -20,6 +20,7 @@ from serializer import HEADER, write_output
 
 FIELDS = ("step_no", "phase", "system_id", "resource_id",
           "operation", "state", "evidence_id")
+STEP_FIELDS = tuple(field for field in FIELDS if field != "step_no")
 ALIGNMENT_FIELDS = ("phase", "operation", "system_id", "resource_id")
 
 
@@ -70,6 +71,15 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
     diagnostics: list[str] = []
     invalid = 0
     failure_causes: Counter[str] = Counter()
+    missing_by_case: dict[str, int] = {}
+    extra_by_case: dict[str, int] = {}
+    exact_steps_without_no = Counter()
+    expected_without_no = Counter()
+    renumbered_sequence_correct = 0
+    extra_examples: dict[str, list[dict[str, Any]]] = {}
+    extra_counts: Counter[str] = Counter()
+    sample_case_rows = {row["case_id"]: row for row in loaders.read_requests(samples=True)}
+    observed_by_case: dict[str, list[Any]] = {}
 
     for case_id, exp_row in case_exp.items():
         pred_row = case_pred.get(case_id)
@@ -84,10 +94,21 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
             exp, pred = [], []
         for step in exp:
             exp_steps[(case_id, *(step.get(field) for field in FIELDS))] += 1
+            expected_without_no[(case_id, *(step.get(field) for field in STEP_FIELDS))] += 1
         for step in pred:
             pred_steps[(case_id, *(step.get(field) for field in FIELDS))] += 1
+            exact_steps_without_no[(case_id, *(step.get(field) for field in STEP_FIELDS))] += 1
         if pred == exp:
             sequence_correct += 1
+        if [tuple(s.get(k) for k in STEP_FIELDS) for s in pred] == [
+                tuple(s.get(k) for k in STEP_FIELDS) for s in exp]:
+            renumbered_sequence_correct += 1
+        exp_n = Counter(tuple(step.get(k) for k in STEP_FIELDS) for step in exp)
+        pred_n = Counter(tuple(step.get(k) for k in STEP_FIELDS) for step in pred)
+        missing_steps = list((exp_n - pred_n).elements())
+        extra_steps = list((pred_n - exp_n).elements())
+        missing_by_case[case_id] = len(missing_steps)
+        extra_by_case[case_id] = len(extra_steps)
         pairs = _lcs_pairs(exp, pred)
         aligned_count += len(pairs)
         field_total += len(pairs) * len(FIELDS)
@@ -124,6 +145,52 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
                 failure_causes["other field mismatch"] += 1
             else:
                 failure_causes["policy operation or phase mismatch"] += 1
+        if extra_steps:
+            try:
+                from discovery import discover_case
+                from policy import evaluate_observation
+                case = sample_case_rows[case_id]
+                observations = discover_case(case)
+            except Exception:
+                observations = []
+                case = sample_case_rows.get(case_id, {})
+            observed_by_case[case_id] = observations
+            obs_by_key = {(o.system_id, o.resource_id): o for o in observations}
+            for extra in extra_steps:
+                phase, system, resource, operation, state, evidence = extra
+                obs = obs_by_key.get((system, resource))
+                category = "sample omits grounded policy violation"
+                if obs:
+                    from datetime import datetime, timezone
+                    try:
+                        observed_time = datetime.fromisoformat(obs.observed_at.replace("Z", "+00:00"))
+                        requested_time = datetime.fromisoformat(case["requested_at"].replace("Z", "+00:00"))
+                        if observed_time.tzinfo is None:
+                            observed_time = observed_time.replace(tzinfo=timezone.utc)
+                        if requested_time.tzinfo is None:
+                            requested_time = requested_time.replace(tzinfo=timezone.utc)
+                        is_pre_request = observed_time < requested_time
+                    except (ValueError, KeyError):
+                        is_pre_request = False
+                    if is_pre_request:
+                        category = "pre-request observation"
+                    elif not evaluate_observation(obs).violation:
+                        category = ("activity-only unresolved resource omitted by sample"
+                                    if obs.source_type == "activity_claim"
+                                    else "already-compliant resource omitted by sample")
+                if any(o.resource_id == resource and o.system_id != system
+                       for o in observed_by_case.get(case_id, observations)):
+                    category = "duplicate resource under different system_ids"
+                extra_counts[category] += 1
+                if len(extra_examples.setdefault(category, [])) < 3:
+                    extra_examples[category].append({
+                        "case_id": case_id, "phase": phase, "operation": operation,
+                        "system_id": system, "resource_id": resource,
+                        "observation": ({"timestamp": obs.observed_at, "state": obs.state_hint,
+                                         "evidence_id": obs.evidence_id,
+                                         "link_basis": obs.link_basis,
+                                         "source_type": obs.source_type} if obs else None),
+                    })
         if pred != exp or (pred_row and pred_row.get("deletion_status") != exp_row["deletion_status"]):
             mismatch = None
             for i in range(max(len(exp), len(pred))):
@@ -151,21 +218,46 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
     precision = tp / predicted_count if predicted_count else 1.0
     recall = tp / expected_count if expected_count else 1.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    tp_no = sum((exact_steps_without_no & expected_without_no).values())
+    pred_no = sum(exact_steps_without_no.values())
+    exp_no = sum(expected_without_no.values())
+    precision_no = tp_no / pred_no if pred_no else 1.0
+    recall_no = tp_no / exp_no if exp_no else 1.0
+    f1_no = (2 * precision_no * recall_no / (precision_no + recall_no)
+             if precision_no + recall_no else 0.0)
     field_accuracy = field_correct / field_total if field_total else 1.0
     sequence_accuracy = sequence_correct / total if total else 1.0
     metrics = {
         "status_accuracy": status_correct / total if total else 1.0,
         "step_precision": precision, "step_recall": recall, "step_f1": f1,
+        "step_precision_without_step_no": precision_no,
+        "step_recall_without_step_no": recall_no, "step_f1_without_step_no": f1_no,
         "field_accuracy": field_accuracy, "field_correct": field_correct,
         "per_field_correct": dict(per_field_correct),
         "field_total": field_total, "aligned_steps": aligned_count,
         "sequence_accuracy": sequence_accuracy, "sequence_correct": sequence_correct,
         "sample_cases": total, "invalid_cases": invalid, "diagnostics": diagnostics,
         "failure_causes": dict(failure_causes),
+        "missing_by_case": missing_by_case, "extra_by_case": extra_by_case,
+        "renumbered_sequence_accuracy": renumbered_sequence_correct / total if total else 1.0,
+        "extra_causes": dict(extra_counts), "extra_examples": extra_examples,
     }
     print(f"sample_status_accuracy={status_correct}/{total} ({metrics['status_accuracy']:.3%})")
     print(f"sample_step_level_precision={precision:.3%} recall={recall:.3%} f1={f1:.3%} "
           f"tp={tp} predicted={predicted_count} expected={expected_count}")
+    print(f"sample_step_level_without_step_no_precision={precision_no:.3%} "
+          f"recall={recall_no:.3%} f1={f1_no:.3%} tp={tp_no} "
+          f"predicted={pred_no} expected={exp_no}")
+    print("sample_per_case_missing_extra=" + json.dumps(
+        {case: {"missing": missing_by_case[case], "extra": extra_by_case[case]}
+         for case in case_exp if missing_by_case.get(case) or extra_by_case.get(case)},
+        ensure_ascii=True))
+    print(f"sample_renumbered_sequence_accuracy={renumbered_sequence_correct}/{total} "
+          f"({(renumbered_sequence_correct / total if total else 1.0):.3%})")
+    print("sample_extra_causes=" + json.dumps(dict(extra_counts), ensure_ascii=True))
+    for cause, count in extra_counts.most_common():
+        print(f"  extra_cause_examples={cause} count={count} " +
+              json.dumps(extra_examples.get(cause, []), ensure_ascii=True))
     print(f"sample_field_level_accuracy={field_correct}/{field_total} ({field_accuracy:.3%}); "
           f"aligned_steps={aligned_count}/{expected_count}")
     for field in FIELDS:
