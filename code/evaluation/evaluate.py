@@ -54,7 +54,7 @@ def _lcs_pairs(expected: list[dict[str, Any]], predicted: list[dict[str, Any]]):
     return pairs
 
 
-def evaluate(prediction_path: Path) -> dict[str, Any]:
+def evaluate(prediction_path: Path, graph_iterations: int = 0) -> dict[str, Any]:
     predicted_rows = _read_predictions(prediction_path)
     expected_rows = loaders.read_csv("sample_output.csv")
     case_pred = {row["case_id"]: row for row in predicted_rows}
@@ -152,7 +152,7 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
             from discovery import discover_case
             from policy import evaluate_observation
             case = sample_case_rows[case_id]
-            observations = discover_case(case)
+            observations = discover_case(case, graph_iterations=graph_iterations)
         except Exception:
             observations = []
             case = sample_case_rows.get(case_id, {})
@@ -262,6 +262,18 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
         "extra_causes": dict(extra_counts), "extra_examples": extra_examples,
     }
     print(f"sample_status_accuracy={status_correct}/{total} ({metrics['status_accuracy']:.3%})")
+    expected_resources_all = {(case_id, step.get("system_id"), step.get("resource_id"))
+                              for case_id, row in case_exp.items()
+                              for step in json.loads(row["steps_json"])}
+    predicted_resources_all = {(case_id, o.system_id, o.resource_id)
+                               for case_id, observations in observed_by_case.items()
+                               for o in observations}
+    resource_tp = len(expected_resources_all & predicted_resources_all)
+    resource_precision = resource_tp / len(predicted_resources_all) if predicted_resources_all else 1.0
+    resource_recall = resource_tp / len(expected_resources_all) if expected_resources_all else 1.0
+    print(f"sample_resource_graph_iteration={graph_iterations} precision={resource_precision:.3%} "
+          f"recall={resource_recall:.3%} tp={resource_tp} "
+          f"predicted={len(predicted_resources_all)} expected={len(expected_resources_all)}")
     print(f"sample_step_level_precision={precision:.3%} recall={recall:.3%} f1={f1:.3%} "
           f"tp={tp} predicted={predicted_count} expected={expected_count}")
     print(f"sample_step_level_without_step_no_precision={precision_no:.3%} "
@@ -338,15 +350,17 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--predictions", type=Path)
+    parser.add_argument("--graph-iterations", type=int, default=1)
     args = parser.parse_args()
     if args.predictions:
-        evaluate(args.predictions)
+        evaluate(args.predictions, args.graph_iterations)
         return
-    sample_rows = run_requests(loaders.read_requests(samples=True))
+    sample_rows = run_requests(loaders.read_requests(samples=True),
+                               graph_iterations=args.graph_iterations)
     with tempfile.TemporaryDirectory(prefix="ghost-data-sample-") as directory:
         path = Path(directory) / "sample_predictions.csv"
         write_output(sample_rows, path)
-        evaluate(path)
+        evaluate(path, args.graph_iterations)
 
 
 if __name__ == "__main__":

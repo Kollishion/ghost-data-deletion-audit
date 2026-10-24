@@ -6,8 +6,10 @@ import csv
 import json
 import re
 import sqlite3
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -178,6 +180,14 @@ def _identify(resource_id: str, obj: Any, default_system: str = "") -> tuple[str
         system = obj["origin_system"]
     system = {"support_replica": "support_platform"}.get(system, system)
     if isinstance(obj, dict):
+        # Plain-text handover rows carry an explicit category in their own
+        # pipe-delimited fields; preserve that classification over the ID prefix.
+        line = str(obj.get("line", ""))
+        columns = [part.strip() for part in line.split("|")]
+        if len(columns) >= 5:
+            explicit_category = columns[3].upper()
+            if explicit_category in set(CATEGORY_BY_PREFIX.values()):
+                category = explicit_category
         # A contact lookup carrying an explicit opt-in field is a marketing
         # contact record by its own event/consent fields. The marketing rule
         # requires deletion; it is not an analytics profile merely because
@@ -186,6 +196,9 @@ def _identify(resource_id: str, obj: Any, default_system: str = "") -> tuple[str
         if ("contact_lookup" in event_name and
                 any(key in obj for key in ("email_opt_in", "marketing_opt_in", "subscription_status"))):
             category = "MARKETING_PROFILE"
+        if (str(obj.get("source", "")).casefold() == "legacy_contact_index" and
+                bool(obj.get("lookup_key"))):
+            category = "SEARCH_INDEX_ENTRY"
         collection = str(obj.get("collection_name", obj.get("collection", ""))).casefold()
         record_type = str(obj.get("record_type", "")).casefold()
         event = str(obj.get("event", obj.get("event_name", ""))).casefold()
@@ -203,16 +216,76 @@ def _direct_resources(obj: Any) -> list[str]:
     result: set[str] = set()
     if not isinstance(obj, dict):
         return []
-    for key in ("resource_id", "linked_resource_id", "source_resource_id",
-                "target_resource_id", "parent_resource_id", "related_resource_id"):
-        value = obj.get(key)
-        if isinstance(value, str) and RESOURCE_RE.fullmatch(value):
-            result.add(value)
+    value = obj.get("resource_id")
+    if isinstance(value, str) and RESOURCE_RE.fullmatch(value):
+        result.add(value)
     for key in ("resource_ids", "linked_resource_ids"):
         value = obj.get(key, [])
         if isinstance(value, list):
             result.update(v for v in value if isinstance(v, str) and RESOURCE_RE.fullmatch(v))
     return sorted(result)
+
+
+def _referenced_resources(obj: Any) -> set[str]:
+    """Extract resource references separately from the record's own resource."""
+    refs: set[str] = set()
+
+    def visit(value: Any, key: str = "") -> None:
+        if isinstance(value, dict):
+            for child_key, child in value.items():
+                visit(child, str(child_key).casefold())
+        elif isinstance(value, list):
+            for child in value:
+                visit(child, key)
+        elif isinstance(value, str) and (
+                "resource" in key or key in {
+                    "reference_id", "source_reference_id", "target_reference_id",
+                    "archive_key", "backup_key", "replica_pair", "snapshot_key",
+                }):
+            refs.update(RESOURCE_RE.findall(value))
+
+    visit(obj)
+    return refs - set(_direct_resources(obj))
+
+
+RESOURCE_JOIN_FIELDS = {
+    "correlation_key", "correlation_id", "trace_id", "request_id",
+    "reference_id", "source_reference_id", "target_reference_id",
+    "email_hash", "profile_hash", "record_hash", "archive_key", "backup_key",
+}
+
+
+def _resource_join_values(obj: Any) -> set[tuple[str, str]]:
+    values: set[tuple[str, str]] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized = str(key).casefold()
+                if normalized in RESOURCE_JOIN_FIELDS and isinstance(child, (str, int)):
+                    candidate = str(child).strip().casefold()
+                    if candidate and candidate not in {"null", "none"}:
+                        values.add((normalized, candidate))
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(obj)
+    return values
+
+
+def _sql_system(table_name: str) -> str:
+    name = table_name.casefold()
+    for fragment, system in (
+        ("customer_profiles", "account_service"), ("search", "search_service"),
+        ("analytics", "analytics_platform"), ("support", "support_platform"),
+        ("export", "export_service"), ("connector", "integration_service"),
+        ("backup", "backup_service"), ("audit", "security_service"),
+    ):
+        if fragment in name:
+            return system
+    return ""
 
 
 OWNER_LINK_FIELDS = {
@@ -394,7 +467,7 @@ def _sql_objects(path: Path) -> Iterable[dict[str, Any]]:
             cur = db.execute(f'SELECT * FROM "{table}"')
             columns = [d[0] for d in cur.description]
             for row in cur:
-                obj = dict(zip(columns, row))
+                obj = {**dict(zip(columns, row)), "_table_name": table}
                 if isinstance(obj.get("record_json"), str):
                     try:
                         obj.update(json.loads(obj["record_json"]))
@@ -405,16 +478,78 @@ def _sql_objects(path: Path) -> Iterable[dict[str, Any]]:
         db.close()
 
 
-def _manifest() -> list[dict[str, str]]:
-    return loaders.read_evidence_manifest()
+@lru_cache(maxsize=1)
+def _manifest() -> tuple[dict[str, str], ...]:
+    return tuple(loaders.read_evidence_manifest())
 
 
-def discover_case(case: dict[str, str]) -> list[Observation]:
+@lru_cache(maxsize=256)
+def _parse_evidence_objects(relative_path: str) -> tuple[dict[str, Any], ...]:
+    path = loaders.evidence_path(relative_path)
+    suffix = path.suffix.casefold()
+    if suffix == ".sql":
+        rows = list(_sql_objects(path))
+        systems: dict[str, set[str]] = defaultdict(set)
+        for row in rows:
+            system = _sql_system(str(row.get("_table_name", "")))
+            resource_id = str(row.get("resource_id", ""))
+            if system and RESOURCE_RE.fullmatch(resource_id):
+                systems[system].add(resource_id)
+        sql_text = path.read_text(encoding="utf-8-sig")
+        metadata = {"_sql_snapshot": (
+            "point-in-time database snapshot" in sql_text.casefold()
+            or "snapshot_scope" in sql_text.casefold()),
+            "_sql_systems": {key: sorted(value) for key, value in systems.items()}}
+        return tuple([*rows, metadata])
+    if suffix == ".json":
+        try:
+            return tuple(_objects(loaders.read_json(path)))
+        except (ValueError, OSError):
+            return ()
+    if suffix not in {".log", ".txt"}:
+        return ()
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except OSError:
+        return ()
+    parsed_lines: list[dict[str, Any]] = []
+    traces: dict[str, list[dict[str, Any]]] = {}
+    for line in lines:
+        if not line.strip():
+            continue
+        time_match = re.search(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", line)
+        row = _log_fields(line)
+        row.update({"line": line, "resource_ids": RESOURCE_RE.findall(line),
+                    "observed_at": time_match.group(0) if time_match else ""})
+        parsed_lines.append(row)
+        trace_match = re.search(
+            r'(?:trace_id|traceId|requestId|correlation_id)[=:" ]+([A-Za-z0-9-]+)',
+            line, re.I)
+        if trace_match:
+            traces.setdefault(trace_match.group(1), []).append(row)
+    for trace_id, rows in traces.items():
+        ids = sorted({rid for row in rows for rid in row["resource_ids"]})
+        if ids:
+            fields: dict[str, Any] = {}
+            for row in rows:
+                fields.update({key: value for key, value in row.items() if key != "line"})
+            parsed_lines.append({**fields, "trace_id": trace_id,
+                                 "lines": [row["line"] for row in rows],
+                                 "resource_ids": ids,
+                                 "observed_at": max((row["observed_at"] for row in rows), default="")})
+    return tuple(parsed_lines)
+
+
+def discover_case(case: dict[str, str], *, graph_iterations: int = 0) -> list[Observation]:
     user_id, identifiers = resolve_identity(case["email"], case["audit_at"])
     cutoff = _dt(case["audit_at"])
     requested_at = _dt(case.get("requested_at", ""))
     found: dict[tuple[str, str], Observation] = {}
     explicit_owners: dict[str, set[str]] = {}
+    resource_graph: dict[str, set[str]] = defaultdict(set)
+    evidence_candidates: dict[str, list[tuple[str, datetime | None, str, str, Any, tuple[str, str, str, str]]]] = defaultdict(list)
+    join_rows: list[tuple[set[str], set[tuple[str, str]]]] = []
+    sql_snapshots: list[tuple[str, datetime | None, dict[str, set[str]]]] = []
 
     def add(resource_id: str, evidence_id: str, observed: datetime | None,
             state_hint: str = "PRESENT", system: str = "", obj: Any = None,
@@ -450,69 +585,56 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
         suffix = path.suffix.casefold()
         if suffix in {".pdf", ".png", ".jpg", ".jpeg", ".webp"}:
             continue
-        if suffix == ".sql":
-            objects = _sql_objects(path)
-        elif suffix == ".json":
-            try:
-                root = loaders.read_json(path)
-            except (ValueError, OSError):
-                continue
-            objects = _objects(root)
-        elif suffix in {".log", ".txt"}:
-            try:
-                lines = path.read_text(encoding="utf-8-sig").splitlines()
-            except OSError:
-                continue
-            parsed_lines = []
-            traces: dict[str, list[dict[str, Any]]] = {}
-            for line in lines:
-                if not line.strip():
-                    continue
-                time_match = re.search(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", line)
-                row = _log_fields(line)
-                row.update({"line": line, "resource_ids": RESOURCE_RE.findall(line),
-                            "observed_at": time_match.group(0) if time_match else ""})
-                parsed_lines.append(row)
-                trace_match = re.search(r'(?:trace_id|traceId|requestId|correlation_id)[=:" ]+([A-Za-z0-9-]+)', line, re.I)
-                if trace_match:
-                    traces.setdefault(trace_match.group(1), []).append(row)
-            # Correlated log records form one observation when the identifier
-            # lookup and resource read are separate lines in the same trace.
-            for trace_id, rows in traces.items():
-                ids = sorted({rid for row in rows for rid in row["resource_ids"]})
-                if ids:
-                    fields = {}
-                    for row in rows:
-                        fields.update({k: v for k, v in row.items() if k != "line"})
-                    parsed_lines.append({**fields, "trace_id": trace_id, "lines": [r["line"] for r in rows],
-                                         "resource_ids": ids,
-                                         "observed_at": max((r["observed_at"] for r in rows), default="")})
-            objects = parsed_lines
-        else:
-            continue
+        objects = _parse_evidence_objects(item["file_path"])
+        for metadata in (obj for obj in objects if obj.get("_sql_snapshot")):
+            sql_snapshots.append((item["file_id"], captured,
+                                  {key: set(value) for key, value in
+                                   metadata.get("_sql_systems", {}).items()}))
 
         for obj in objects:
             ids = _direct_resources(obj)
             if not ids:
                 continue
+            refs = _referenced_resources(obj)
+            row_resources = set(ids) | refs
             owners = _explicit_subject_refs(obj)
-            for resource_id in ids:
+            for resource_id in row_resources:
                 explicit_owners.setdefault(resource_id, set()).update(owners)
+            for resource_id in row_resources:
+                resource_graph[resource_id].update(row_resources - {resource_id})
+            join_rows.append((row_resources, _resource_join_values(obj)))
             link_details = _subject_link_details(obj, user_id, identifiers)
-            if not (link_details[0] or _is_subject_match(obj, user_id, identifiers)):
-                continue
             observed = _observation_time(obj) or captured
             # The origin/target/system on the record overrides prefix defaults.
             source_system = next((str(obj[k]) for k in ("system", "target_system", "service")
                                   if isinstance(obj, dict) and obj.get(k)), "")
-            category = _identify(ids[0], obj, source_system)[1]
-            hint = _state_hint(category, obj, cutoff, identifiers, user_id)
+            for resource_id in ids:
+                category = _identify(resource_id, obj, source_system)[1]
+                hint = _state_hint(category, obj, cutoff, identifiers, user_id)
+                evidence_candidates[resource_id].append(
+                    (item["file_id"], observed, hint, source_system, obj, link_details))
+            if not (link_details[0] or _is_subject_match(obj, user_id, identifiers)):
+                continue
             structured_link = link_details[3].startswith("structured:")
             link_basis = ("structured subject field" if structured_link
                           else "current/historical identifier match")
             for resource_id in sorted(set(ids)):
+                category = _identify(resource_id, obj, source_system)[1]
+                hint = _state_hint(category, obj, cutoff, identifiers, user_id)
                 add(resource_id, item["file_id"], observed, hint, source_system, obj,
                     link_basis, "evidence", link_details)
+
+    # Join exact record keys (trace/correlation/reference/hash/archive) across
+    # rows, and retain explicit resource-reference edges as separate links.
+    join_index: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for resources, values in join_rows:
+        for value in values:
+            join_index[value].update(resources)
+    for resources in join_index.values():
+        if len(resources) < 2:
+            continue
+        for resource_id in resources:
+            resource_graph[resource_id].update(resources - {resource_id})
 
     activity_rows = loaders.read_activity()
     # Build a cutoff-bounded resource graph. Identity-bearing catalog events
@@ -575,6 +697,42 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
                 "identity-bearing activity link" if resource_id in seeds else
                 "explicit resource reference from linked activity",
                 "activity_claim")
+
+    for resource_id, neighbors in graph.items():
+        resource_graph[resource_id].update(neighbors)
+    reachable = {resource for _, resource in found}
+    reachable.update(linked_resources)
+    frontier = set(reachable)
+    for iteration in range(max(0, graph_iterations)):
+        next_frontier: set[str] = set()
+        parent_for: dict[str, str] = {}
+        for source in sorted(frontier):
+            for target in resource_graph.get(source, set()) - reachable:
+                next_frontier.add(target)
+                parent_for.setdefault(target, source)
+        next_frontier = {
+            target for target in next_frontier
+            if not any(owner != user_id.casefold()
+                       for owner in explicit_owners.get(target, set()))
+        }
+        for target in sorted(next_frontier):
+            candidates = evidence_candidates.get(target, ())
+            if candidates:
+                for evidence_id, observed, hint, system, obj, _ in candidates:
+                    add(target, evidence_id, observed, hint, system, obj,
+                        f"resource graph iteration {iteration + 1}", "evidence",
+                        ("resource_reference", parent_for.get(target, ""), target,
+                         "resource_graph"))
+            else:
+                default_system, _ = _identify(target, {})
+                for evidence_id, captured, systems in sql_snapshots:
+                    if default_system in systems and target not in systems[default_system]:
+                        add(target, evidence_id, captured, "ABSENT", default_system, None,
+                            f"resource graph iteration {iteration + 1} via scoped SQL absence",
+                            "evidence", ("snapshot_scope", parent_for.get(target, default_system), target,
+                                         "resource_graph"))
+        reachable.update(next_frontier)
+        frontier = next_frontier
 
     # A scoped, explicitly empty structured snapshot is a direct absence
     # observation for resources already linked to this subject. The activity

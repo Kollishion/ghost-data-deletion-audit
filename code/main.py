@@ -21,7 +21,7 @@ except ImportError:
 LOGGER = logging.getLogger("deletion_audit")
 
 
-def run_requests(requests: list[dict[str, str]]) -> list[dict[str, str]]:
+def run_requests(requests: list[dict[str, str]], *, graph_iterations: int = 0) -> list[dict[str, str]]:
     output: list[dict[str, str]] = []
     for case in requests:
         case_id = case.get("case_id", "<missing>")
@@ -31,7 +31,7 @@ def run_requests(requests: list[dict[str, str]]) -> list[dict[str, str]]:
             if intent != AUTHORIZED:
                 status, steps = "NOT_APPLICABLE", []
             else:
-                observations = discover_case(case)
+                observations = discover_case(case, graph_iterations=graph_iterations)
                 status, steps = build_plan(observations)
             steps_json = serialize_case(status, steps)
         except Exception as exc:  # keep a single malformed case from aborting the run
@@ -51,7 +51,7 @@ def run_requests(requests: list[dict[str, str]]) -> list[dict[str, str]]:
 
 def main() -> None:
     logging.basicConfig(level=logging.ERROR, format="%(levelname)s %(message)s")
-    rows = run_requests(loaders.read_requests())
+    rows = run_requests(loaders.read_requests(), graph_iterations=1)
     write_output(rows, loaders.REPO_ROOT / "output.csv")
     from collections import Counter
     print(f"rows={len(rows)} status_counts={dict(sorted(Counter(r['deletion_status'] for r in rows).items()))}")

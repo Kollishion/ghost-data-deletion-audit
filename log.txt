@@ -389,3 +389,32 @@ branch=main
 repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+## [2026-10-25T00:44:34+05:30] Correct policy mapping and test iterative evidence graph
+
+User Prompt (verbatim, secrets redacted):
+Read PROGRESS.md and AGENTS.md first, and follow the logging rules. Then:
+
+1. Policy mapping: check every category in deletion_rules.csv against what policy.py emits. SUPPORT_ATTACHMENT (rule_06) must be REPORT_REMAINING_RECORD / DELETE_RECORD / VERIFY_RECORD_ABSENT when it belongs only to the subject; SUPPORT_MESSAGE (rule_05) is REDACT. Fix case_13 / support_4218 and any other category mapped wrongly. List each category with the operations it now produces and whether a sample covers it.
+
+2. For the 8 extra findings (case_06 account_006, case_10 support_002, case_13 support_4218, and the others): print the expected steps for the same resource from sample_output.csv, every eligible observation of the resource with its timestamp and state, and the case's audit_at. Check whether (a) case_13's evidence_03 observation is eligible at its audit_at, (b) a later observation or a conflicting snapshot (primary vs replica) makes the expected state different from the one the pipeline chose. Fix any data-grounded cause; do not suppress findings by case_id.
+
+3. Recall (37 missed steps in cases 01-04 and 26-28): try an iterative resource graph. Starting from resources already attributed to the user, add resources reachable through fields in those records (correlation keys, linked resource ids, reference ids, hashes, replica pairs, backup archive keys, data-flow targets), and exclude anything explicitly tied to another user. Test on the 32 samples and report recall and precision at each iteration. Keep only if status accuracy does not drop and precision stays above 90%.
+
+Rerun the sample evaluation and full run, validate, update PROGRESS.md (rewrite stale numbers in place; do not leave contradictory old metrics), and print only before/after metrics and any remaining mismatches grouped by cause.
+
+Agent Response Summary:
+Audited all policy categories and corrected record-derived categorization for the legacy contact index and the explicit SUPPORT_ATTACHMENT handover row. Separated referenced resource IDs from the source resource's state, added one-hop evidence graph joins with ownership exclusion and scoped SQL absence, and compared iterations 0/1/2; the retained one-hop graph increased resource recall while preserving 90.625% status accuracy and over-90% precision. Reran sample evaluation and the 518-case output, validation passed with status counts unchanged, and replaced stale PROGRESS.md metrics with the current mapping, observation audit, results, and gaps.
+
+Actions:
+* Edited code/discovery.py, code/main.py, code/evaluation/evaluate.py, and PROGRESS.md
+* Ran python code/evaluation/evaluate.py with graph iterations 0, 1, and 2
+* Ran python code/main.py and python code/validate_output.py
+* Ran python -m py_compile on changed Python modules
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
