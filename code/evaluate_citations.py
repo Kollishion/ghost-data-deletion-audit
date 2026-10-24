@@ -11,10 +11,10 @@ from collections import Counter, defaultdict
 
 try:
     from . import loaders
-    from .discovery import _dt
+    from .discovery import _dt, _snapshot_absence_observation
 except ImportError:
     import loaders
-    from discovery import _dt
+    from discovery import _dt, _snapshot_absence_observation
 
 
 DIRECT_EXTS = {".sql", ".json", ".log", ".txt"}
@@ -46,7 +46,10 @@ def _candidates(case: dict[str, str], system: str, resource: str):
         # A complete system snapshot can prove absence after another source
         # associates the key; this is tested separately from direct evidence.
         name = (path.name + " " + item.get("origin", "")).casefold()
-        broad = (not direct and any(hint in name for hint in SYSTEM_HINTS.get(system, ())))
+        scoped_absence = (not direct and path.suffix.casefold() == ".json" and
+                          _snapshot_absence_observation(item, resource, system) is not None)
+        broad = (not direct and (scoped_absence or
+                 any(hint in name for hint in SYSTEM_HINTS.get(system, ()))))
         if not direct and not broad:
             continue
         observed = captured

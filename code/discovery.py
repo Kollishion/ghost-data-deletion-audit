@@ -69,6 +69,26 @@ def _objects(value: Any) -> Iterable[dict[str, Any]]:
             yield from _objects(child)
 
 
+def _snapshot_resource_absent(path: Path, system_id: str, resource_id: str) -> bool:
+    """Return true when a scoped JSON record array explicitly omits the key.
+
+    In particular, an empty ``records`` array is an explicit empty snapshot,
+    rather than a missing/unparsed observation. This predicate is intentionally
+    scoped by the snapshot's source system and only applies to a JSON record set.
+    """
+    try:
+        root = loaders.read_json(path)
+    except (ValueError, OSError):
+        return False
+    for obj in _objects(root):
+        store = str(obj.get("data_store", obj.get("system_id", "")))
+        records = obj.get("records")
+        if store == system_id and isinstance(records, list):
+            if not records:
+                return True
+    return False
+
+
 def _log_fields(line: str) -> dict[str, Any]:
     """Parse key=value and key: value tokens from one structured log record."""
     row: dict[str, Any] = {}
@@ -115,6 +135,20 @@ class Observation:
     observed_at: str
     state_hint: str
     category: str
+
+
+def _snapshot_absence_observation(
+    item: dict[str, str], resource_id: str, system_id: str
+) -> Observation | None:
+    """Parse an explicit empty scoped snapshot as an ABSENT observation."""
+    captured = item.get("captured_at", "")
+    path = loaders.evidence_path(item["file_path"])
+    if not _snapshot_resource_absent(path, system_id, resource_id):
+        return None
+    _, category = _identify(resource_id, {})
+    observed = _dt(captured)
+    return Observation(system_id, resource_id, item["file_id"],
+                       observed.isoformat() if observed else "", "ABSENT", category)
 
 
 CATEGORY_BY_PREFIX = {
