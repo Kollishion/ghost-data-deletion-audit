@@ -69,6 +69,15 @@ def _objects(value: Any) -> Iterable[dict[str, Any]]:
             yield from _objects(child)
 
 
+def _log_fields(line: str) -> dict[str, Any]:
+    """Parse key=value and key: value tokens from one structured log record."""
+    row: dict[str, Any] = {}
+    for match in re.finditer(r'([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|\S+)', line):
+        value = match.group(2).strip('"')
+        row[match.group(1).casefold()] = value
+    return row
+
+
 def _is_subject_match(obj: Any, user_id: str, identifiers: set[str]) -> bool:
     values = [v.strip().casefold() for v in _flatten(obj) if v.strip()]
     needles = {user_id.casefold(), *(v.strip().casefold() for v in identifiers)}
@@ -127,6 +136,7 @@ def _identify(resource_id: str, obj: Any, default_system: str = "") -> tuple[str
     # In SQL inventory tables, origin_system is the actual system of the resource.
     if isinstance(obj, dict) and isinstance(obj.get("origin_system"), str):
         system = obj["origin_system"]
+    system = {"support_replica": "support_platform"}.get(system, system)
     if isinstance(obj, dict):
         collection = str(obj.get("collection_name", obj.get("collection", ""))).casefold()
         record_type = str(obj.get("record_type", "")).casefold()
@@ -141,24 +151,55 @@ def _identify(resource_id: str, obj: Any, default_system: str = "") -> tuple[str
 
 
 def _direct_resources(obj: Any) -> list[str]:
+    """Read resource keys from the current record's resource/link fields."""
+    result: set[str] = set()
     if not isinstance(obj, dict):
         return []
-    result: set[str] = set()
-    value = obj.get("resource_id")
-    if isinstance(value, str) and RESOURCE_RE.fullmatch(value):
-        result.add(value)
-    result.update(v for v in obj.get("resource_ids", [])
-                  if isinstance(v, str) and RESOURCE_RE.fullmatch(v))
+    for key in ("resource_id", "linked_resource_id", "source_resource_id",
+                "target_resource_id", "parent_resource_id", "related_resource_id"):
+        value = obj.get(key)
+        if isinstance(value, str) and RESOURCE_RE.fullmatch(value):
+            result.add(value)
+    for key in ("resource_ids", "linked_resource_ids"):
+        value = obj.get(key, [])
+        if isinstance(value, list):
+            result.update(v for v in value if isinstance(v, str) and RESOURCE_RE.fullmatch(v))
     return sorted(result)
+
+
+def _structured_subject_match(obj: Any, user_id: str, identifiers: set[str]) -> bool:
+    """Match identity through known record-link fields, not unrelated payload text."""
+    link_names = {"subject_reference", "user_id", "customer_reference", "owner_email",
+                  "requester_email", "customer_email", "email", "email_hash", "phone",
+                  "owner_phone", "requester_phone", "customer_phone", "linked_user_id",
+                  "linked_subject_reference"}
+    needles = {user_id.casefold(), *(v.strip().casefold() for v in identifiers)}
+
+    def visit(value: Any, key: str = "") -> bool:
+        if isinstance(value, dict):
+            return any(visit(child, str(child_key).casefold())
+                       for child_key, child in value.items())
+        if isinstance(value, list):
+            return any(visit(child, key) for child in value)
+        if key not in link_names or value is None:
+            return False
+        candidate = str(value).strip().casefold()
+        return bool(candidate and candidate not in {"null", "none"} and candidate in needles)
+
+    return visit(obj)
 
 
 def _state_hint(category: str, obj: Any, cutoff: datetime | None) -> str:
     """Extract an observed state clue from one resource record/line."""
     raw = " ".join(_flatten(obj))
-    if re.search(r"\b(NOT_FOUND|NOT FOUND|ABSENT|rows\s*[=:]\s*0)\b", raw, re.I):
+    if re.search(r"\b(NOT_FOUND|NOT FOUND|ABSENT|rows\s*[=:]\s*0|http_status\s*[=:]\s*404|status_code\s*[=:]\s*404)\b", raw, re.I):
         return "ABSENT"
     if not isinstance(obj, dict):
         return "PRESENT"
+    if str(obj.get("status_code", "")) == "404" or str(obj.get("http_status", "")) == "404":
+        return "ABSENT"
+    if any(key in obj and obj.get(key) is None for key in ("profile", "record", "row")):
+        return "ABSENT"
     if category == "DATA_FLOW":
         enabled = obj.get("enabled")
         if str(enabled).casefold() in {"true", "1", "yes"}:
@@ -265,8 +306,9 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
                 if not line.strip():
                     continue
                 time_match = re.search(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", line)
-                row = {"line": line, "resource_ids": RESOURCE_RE.findall(line),
-                       "observed_at": time_match.group(0) if time_match else ""}
+                row = _log_fields(line)
+                row.update({"line": line, "resource_ids": RESOURCE_RE.findall(line),
+                            "observed_at": time_match.group(0) if time_match else ""})
                 parsed_lines.append(row)
                 trace_match = re.search(r'(?:trace_id|traceId|requestId|correlation_id)[=:" ]+([A-Za-z0-9-]+)', line, re.I)
                 if trace_match:
@@ -276,7 +318,10 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
             for trace_id, rows in traces.items():
                 ids = sorted({rid for row in rows for rid in row["resource_ids"]})
                 if ids:
-                    parsed_lines.append({"trace_id": trace_id, "lines": [r["line"] for r in rows],
+                    fields = {}
+                    for row in rows:
+                        fields.update({k: v for k, v in row.items() if k != "line"})
+                    parsed_lines.append({**fields, "trace_id": trace_id, "lines": [r["line"] for r in rows],
                                          "resource_ids": ids,
                                          "observed_at": max((r["observed_at"] for r in rows), default="")})
             objects = parsed_lines
@@ -284,7 +329,10 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
             continue
 
         for obj in objects:
-            if not _direct_resources(obj) or not _is_subject_match(obj, user_id, identifiers):
+            if not _direct_resources(obj):
+                continue
+            if not (_structured_subject_match(obj, user_id, identifiers) or
+                    _is_subject_match(obj, user_id, identifiers)):
                 continue
             observed = _observation_time(obj) or captured
             ids = _direct_resources(obj)
@@ -297,46 +345,47 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
                 add(resource_id, item["file_id"], observed, hint, source_system, obj)
 
     activity_rows = loaders.read_activity()
-    # LINK_RESOURCE_IDENTITY is an explicit resource-to-subject association.
+    # Build a cutoff-bounded resource graph. Identity-bearing catalog events
+    # seed the subject's resources; event details can then connect related keys.
+    graph: dict[str, set[str]] = {}
+    event_by_resource: dict[str, list[tuple[dict[str, str], datetime | None]]] = {}
     for event in activity_rows:
-        if event.get("event_type") != "LINK_RESOURCE_IDENTITY":
+        event_time = _dt(event.get("event_time", ""))
+        if cutoff and event_time and event_time > cutoff:
             continue
+        rid = event.get("resource_id", "")
+        refs = set(RESOURCE_RE.findall(event.get("details", "")))
+        if rid and RESOURCE_RE.fullmatch(rid):
+            refs.add(rid)
+        for key in refs:
+            graph.setdefault(key, set()).update(refs - {key})
+            event_by_resource.setdefault(key, []).append((event, event_time))
+
+    seeds: set[str] = set()
+    for event in activity_rows:
         event_time = _dt(event.get("event_time", ""))
         if cutoff and event_time and event_time > cutoff:
             continue
         details = event.get("details", "")
-        linked = {v.casefold() for v in RESOURCE_RE.findall(details)}
-        if user_id.casefold() not in details.casefold() and not any(
-            identifier.casefold() in details.casefold() for identifier in identifiers
-        ):
+        if not _is_subject_match({"details": details}, user_id, identifiers):
             continue
+        seeds.update(RESOURCE_RE.findall(details))
         rid = event.get("resource_id", "")
-        if rid and (rid in linked or not linked):
-            add(rid, event["activity_id"], event_time, "PRESENT", event.get("target_system", ""))
-
-    # Deletion-worker events can identify the resource key for a removed source
-    # record even when a complete source snapshot contains no row to match. Use
-    # only the unique nearest account deletion event in the request/report
-    # interval, and retain the activity ID as the provenance (not as proof of
-    # the resulting state). This is resource discovery, not a state conclusion.
-    if not any(o.category == "USER_PROFILE" for o in found.values()):
-        requested, reported = _dt(case.get("requested_at", "")), _dt(case.get("reported_at", ""))
-        candidates = []
-        for event in activity_rows:
-            event_time = _dt(event.get("event_time", ""))
-            if (event.get("event_type") != "DELETE_RECORD" or
-                event.get("target_system") != "account_service" or not event_time or
-                (cutoff and event_time > cutoff) or
-                (requested and event_time < requested) or
-                (reported and abs((event_time - reported).total_seconds()) > 600)):
-                continue
-            candidates.append((abs((event_time - reported).total_seconds()) if reported else 0,
-                               event, event_time))
-        candidates.sort(key=lambda item: (item[0], item[1]["resource_id"]))
-        if candidates and (len(candidates) == 1 or candidates[0][0] < candidates[1][0]):
-            _, event, event_time = candidates[0]
-            add(event["resource_id"], event["activity_id"], event_time,
-                "UNKNOWN", "account_service")
+        if rid and RESOURCE_RE.fullmatch(rid):
+            seeds.add(rid)
+    linked_resources = set(seeds)
+    frontier = list(seeds)
+    while frontier:
+        current = frontier.pop()
+        for neighbor in graph.get(current, ()):
+            if neighbor not in linked_resources:
+                linked_resources.add(neighbor)
+                frontier.append(neighbor)
+    for resource_id in sorted(linked_resources):
+        for event, event_time in event_by_resource.get(resource_id, ()):
+            system = event.get("target_system", "")
+            add(resource_id, event.get("activity_id", ""), event_time,
+                "PRESENT", system)
 
     # Preserve the best eligible observation for each unique system/resource pair.
     return sorted(found.values(), key=lambda o: (o.system_id, o.resource_id))

@@ -1,5 +1,7 @@
-﻿case_01: recall=1.000 precision=1.000 expected=1 discovered=1 misses=[] extras=[]
-case_02: recall=1.000 precision=1.000 expected=1 discovered=1 misses=[] extras=[]
+﻿case_01: recall=0.000 precision=0.000 expected=1 discovered=0 misses=[('account_service', 'account_001')] extras=[]
+  MISS REASON account_001: time-eligible activity claim(s) activity_3342 name this resource without a subject link; no text-format state/identity record
+case_02: recall=0.000 precision=0.000 expected=1 discovered=0 misses=[('account_service', 'account_002')] extras=[]
+  MISS REASON account_002: time-eligible activity claim(s) activity_3376 name this resource without a subject link; no text-format state/identity record
 case_03: recall=0.667 precision=1.000 expected=3 discovered=2 misses=[('analytics_platform', 'analytics_9406')] extras=[]
   MISS REASON analytics_9406: resource occurs in eligible non-PDF/image evidence ['evidence_94'], but no row/trace-local subject link was extracted
 case_04: recall=0.000 precision=0.000 expected=2 discovered=0 misses=[('account_service', 'account_004'), ('analytics_platform', 'analytics_901')] extras=[]
@@ -7,13 +9,16 @@ case_04: recall=0.000 precision=0.000 expected=2 discovered=0 misses=[('account_
   MISS REASON analytics_901: resource occurs in eligible non-PDF/image evidence ['evidence_56'], but no row/trace-local subject link was extracted
 case_05: recall=1.000 precision=1.000 expected=1 discovered=1 misses=[] extras=[]
 case_06: recall=1.000 precision=1.000 expected=2 discovered=2 misses=[] extras=[]
-case_07: recall=0.500 precision=0.500 expected=2 discovered=2 misses=[('support_platform', 'support_001')] extras=[('object_storage', 'object_19')]
+case_07: recall=0.000 precision=0.000 expected=2 discovered=1 misses=[('account_service', 'account_007'), ('support_platform', 'support_001')] extras=[('object_storage', 'object_19')]
+  MISS REASON account_007: time-eligible activity claim(s) activity_3590 name this resource without a subject link; no text-format state/identity record
   MISS REASON support_001: no resource occurrence in scanned non-PDF/image evidence or eligible activity
-case_08: recall=1.000 precision=1.000 expected=2 discovered=2 misses=[] extras=[]
+case_08: recall=0.500 precision=1.000 expected=2 discovered=1 misses=[('account_service', 'account_008')] extras=[]
+  MISS REASON account_008: time-eligible activity claim(s) activity_3554 name this resource without a subject link; no text-format state/identity record
 case_09: recall=0.333 precision=1.000 expected=3 discovered=1 misses=[('account_service', 'account_3960'), ('security_service', 'audit_record_4902')] extras=[]
   MISS REASON account_3960: time-eligible activity claim(s) activity_3703 name this resource without a subject link; direct evidence is only post-cutoff ['evidence_06']
   MISS REASON audit_record_4902: resource occurs only in post-cutoff non-PDF/image evidence ['evidence_06']
-case_10: recall=1.000 precision=1.000 expected=2 discovered=2 misses=[] extras=[]
+case_10: recall=0.500 precision=1.000 expected=2 discovered=1 misses=[('account_service', 'account_010')] extras=[]
+  MISS REASON account_010: time-eligible activity claim(s) activity_3595 name this resource without a subject link; no text-format state/identity record
 case_11: recall=1.000 precision=1.000 expected=6 discovered=6 misses=[] extras=[]
 case_12: recall=1.000 precision=1.000 expected=3 discovered=3 misses=[] extras=[]
 case_13: recall=1.000 precision=1.000 expected=4 discovered=4 misses=[] extras=[]
@@ -21,11 +26,11 @@ case_14: recall=1.000 precision=1.000 expected=3 discovered=3 misses=[] extras=[
 case_15: recall=1.000 precision=1.000 expected=3 discovered=3 misses=[] extras=[]
 case_16: recall=1.000 precision=1.000 expected=3 discovered=3 misses=[] extras=[]
 case_17: recall=1.000 precision=0.600 expected=3 discovered=5 misses=[] extras=[('account_service', 'account_6523'), ('identity_service', 'tombstone_17')]
-case_18: recall=0.667 precision=0.800 expected=6 discovered=5 misses=[('account_service', 'account_5521'), ('security_service', 'audit_record_6645')] extras=[('account_service', 'account_5193')]
+case_18: recall=0.667 precision=1.000 expected=6 discovered=4 misses=[('account_service', 'account_5521'), ('security_service', 'audit_record_6645')] extras=[]
   MISS REASON account_5521: time-eligible activity claim(s) activity_3732 name this resource without a subject link; no text-format state/identity record
   MISS REASON audit_record_6645: no resource occurrence in scanned non-PDF/image evidence or eligible activity
 case_19: recall=1.000 precision=1.000 expected=4 discovered=4 misses=[] extras=[]
-case_20: recall=0.500 precision=0.667 expected=4 discovered=3 misses=[('account_service', 'account_5037'), ('security_service', 'audit_record_5569')] extras=[('account_service', 'account_5193')]
+case_20: recall=0.500 precision=1.000 expected=4 discovered=2 misses=[('account_service', 'account_5037'), ('security_service', 'audit_record_5569')] extras=[]
   MISS REASON account_5037: time-eligible activity claim(s) activity_3734 name this resource without a subject link; no text-format state/identity record
   MISS REASON audit_record_5569: no resource occurrence in scanned non-PDF/image evidence or eligible activity
 case_21: recall=0.333 precision=1.000 expected=3 discovered=1 misses=[('account_service', 'account_6440'), ('analytics_platform', 'analytics_5335')] extras=[]
@@ -60,4 +65,4 @@ case_31: recall=0.667 precision=1.000 expected=3 discovered=2 misses=[('account_
   MISS REASON account_4857: time-eligible activity claim(s) activity_3682 name this resource without a subject link; no text-format state/identity record
 case_32: recall=0.667 precision=1.000 expected=3 discovered=2 misses=[('account_service', 'account_8858')] extras=[]
   MISS REASON account_8858: time-eligible activity claim(s) activity_3685 name this resource without a subject link; no text-format state/identity record
-MICRO: recall=0.730 precision=0.942 tp=81 fp=5 fn=30
+MICRO: recall=0.685 precision=0.962 tp=76 fp=3 fn=35
