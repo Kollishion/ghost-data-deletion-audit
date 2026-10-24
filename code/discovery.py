@@ -137,6 +137,10 @@ class Observation:
     category: str
     source_type: str = "evidence"
     link_basis: str = ""
+    link_field: str = ""
+    link_value: str = ""
+    matched_identifier: str = ""
+    link_type: str = ""
 
 
 def _snapshot_absence_observation(
@@ -261,6 +265,50 @@ def _structured_subject_match(obj: Any, user_id: str, identifiers: set[str]) -> 
     return visit(obj)
 
 
+def _subject_link_details(obj: Any, user_id: str, identifiers: set[str]) -> tuple[str, str, str, str]:
+    """Return the concrete field/value/identifier that grounded the user link."""
+    link_names = {"subject_reference", "user_id", "customer_reference", "owner_email",
+                  "requester_email", "customer_email", "email", "email_hash", "phone",
+                  "owner_phone", "requester_phone", "customer_phone", "linked_user_id",
+                  "linked_subject_reference"}
+    needles = {user_id.casefold(): user_id}
+    needles.update({value.strip().casefold(): value.strip() for value in identifiers if value.strip()})
+
+    def leaves(value: Any, path: str = "") -> Iterable[tuple[str, str]]:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                child_path = f"{path}.{key}" if path else str(key)
+                yield from leaves(child, child_path)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                yield from leaves(child, f"{path}[{index}]")
+        elif value is not None:
+            yield path, str(value)
+
+    fields = list(leaves(obj))
+    # Explicit link fields have the strongest provenance and require equality.
+    for path, value in fields:
+        key = path.rsplit(".", 1)[-1].split("[", 1)[0].casefold()
+        candidate = value.strip().casefold()
+        if key in link_names and candidate in needles:
+            matched = needles[candidate]
+            return path, value, matched, f"structured:{key}"
+    # Keep legacy content matching, but expose the exact leaf that matched.
+    for path, value in fields:
+        folded = value.casefold()
+        for normalized, original in needles.items():
+            pattern = re.escape(normalized)
+            if normalized.startswith("user_"):
+                pattern = r"(?<![A-Za-z0-9_])" + pattern + r"(?![A-Za-z0-9_])"
+            elif "@" not in normalized and not re.fullmatch(r"[0-9a-f]{64}", normalized):
+                pattern = r"(?<!\w)" + pattern + r"(?!\w)"
+            if re.search(pattern, folded, re.I):
+                key = path.rsplit(".", 1)[-1].split("[", 1)[0].casefold()
+                link_type = f"identifier:{key}" if key in link_names | {"correlation_key"} else "content_match"
+                return path, value, original, link_type
+    return "", "", "", ""
+
+
 def _state_hint(
     category: str, obj: Any, cutoff: datetime | None,
     identifiers: set[str] | None = None, user_id: str = "",
@@ -364,19 +412,22 @@ def _manifest() -> list[dict[str, str]]:
 def discover_case(case: dict[str, str]) -> list[Observation]:
     user_id, identifiers = resolve_identity(case["email"], case["audit_at"])
     cutoff = _dt(case["audit_at"])
+    requested_at = _dt(case.get("requested_at", ""))
     found: dict[tuple[str, str], Observation] = {}
     explicit_owners: dict[str, set[str]] = {}
 
     def add(resource_id: str, evidence_id: str, observed: datetime | None,
             state_hint: str = "PRESENT", system: str = "", obj: Any = None,
-            link_basis: str = "", source_type: str = "evidence") -> None:
+            link_basis: str = "", source_type: str = "evidence",
+            link_details: tuple[str, str, str, str] = ("", "", "", "")) -> None:
         if cutoff and observed and observed > cutoff:
             return
         actual_system, category = _identify(resource_id, obj, system)
         key = (actual_system, resource_id)
         stamp = observed.isoformat() if observed else ""
         candidate = Observation(actual_system, resource_id, evidence_id,
-                                 stamp, state_hint, category, source_type, link_basis)
+                                 stamp, state_hint, category, source_type, link_basis,
+                                 *link_details)
         old = found.get(key)
         state_priority = {
             "PRESENT": 0, "ACTIVE": 0, "RESTORE_ALLOWED": 0,
@@ -447,9 +498,8 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
             owners = _explicit_subject_refs(obj)
             for resource_id in ids:
                 explicit_owners.setdefault(resource_id, set()).update(owners)
-            structured_link = _structured_subject_match(obj, user_id, identifiers)
-            identifier_link = _is_subject_match(obj, user_id, identifiers)
-            if not (structured_link or identifier_link):
+            link_details = _subject_link_details(obj, user_id, identifiers)
+            if not (link_details[0] or _is_subject_match(obj, user_id, identifiers)):
                 continue
             observed = _observation_time(obj) or captured
             # The origin/target/system on the record overrides prefix defaults.
@@ -457,11 +507,12 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
                                   if isinstance(obj, dict) and obj.get(k)), "")
             category = _identify(ids[0], obj, source_system)[1]
             hint = _state_hint(category, obj, cutoff, identifiers, user_id)
+            structured_link = link_details[3].startswith("structured:")
             link_basis = ("structured subject field" if structured_link
                           else "current/historical identifier match")
             for resource_id in sorted(set(ids)):
                 add(resource_id, item["file_id"], observed, hint, source_system, obj,
-                    link_basis, "evidence")
+                    link_basis, "evidence", link_details)
 
     activity_rows = loaders.read_activity()
     # Build a cutoff-bounded resource graph. Identity-bearing catalog events
@@ -471,6 +522,8 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
     for event in activity_rows:
         event_time = _dt(event.get("event_time", ""))
         if cutoff and event_time and event_time > cutoff:
+            continue
+        if requested_at and event_time and event_time < requested_at:
             continue
         rid = event.get("resource_id", "")
         refs = set(RESOURCE_RE.findall(event.get("details", "")))
@@ -496,6 +549,8 @@ def discover_case(case: dict[str, str]) -> list[Observation]:
     for event in activity_rows:
         event_time = _dt(event.get("event_time", ""))
         if cutoff and event_time and event_time > cutoff:
+            continue
+        if requested_at and event_time and event_time < requested_at:
             continue
         details = event.get("details", "")
         if not _is_subject_match({"details": details}, user_id, identifiers):

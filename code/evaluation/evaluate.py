@@ -80,6 +80,9 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
     extra_counts: Counter[str] = Counter()
     sample_case_rows = {row["case_id"]: row for row in loaders.read_requests(samples=True)}
     observed_by_case: dict[str, list[Any]] = {}
+    link_totals: Counter[str] = Counter()
+    link_expected: Counter[str] = Counter()
+    extra_resource_details: dict[tuple[str, str, str, str], dict[str, Any]] = {}
 
     for case_id, exp_row in case_exp.items():
         pred_row = case_pred.get(case_id)
@@ -145,17 +148,23 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
                 failure_causes["other field mismatch"] += 1
             else:
                 failure_causes["policy operation or phase mismatch"] += 1
+        try:
+            from discovery import discover_case
+            from policy import evaluate_observation
+            case = sample_case_rows[case_id]
+            observations = discover_case(case)
+        except Exception:
+            observations = []
+            case = sample_case_rows.get(case_id, {})
+        observed_by_case[case_id] = observations
+        obs_by_key = {(o.system_id, o.resource_id): o for o in observations}
+        expected_resources = {(step.get("system_id"), step.get("resource_id")) for step in exp}
+        for obs in observations:
+            key = obs.link_type or obs.link_basis or "unlinked"
+            link_totals[key] += 1
+            if (obs.system_id, obs.resource_id) in expected_resources:
+                link_expected[key] += 1
         if extra_steps:
-            try:
-                from discovery import discover_case
-                from policy import evaluate_observation
-                case = sample_case_rows[case_id]
-                observations = discover_case(case)
-            except Exception:
-                observations = []
-                case = sample_case_rows.get(case_id, {})
-            observed_by_case[case_id] = observations
-            obs_by_key = {(o.system_id, o.resource_id): o for o in observations}
             for extra in extra_steps:
                 phase, system, resource, operation, state, evidence = extra
                 obs = obs_by_key.get((system, resource))
@@ -182,6 +191,16 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
                        for o in observed_by_case.get(case_id, observations)):
                     category = "duplicate resource under different system_ids"
                 extra_counts[category] += 1
+                if obs:
+                    extra_resource_details[(case_id, phase, system, resource + ":" + operation)] = {
+                        "case_id": case_id, "phase": phase, "resource": resource, "operation": operation,
+                        "link_type": obs.link_type or obs.link_basis,
+                        "link_field": obs.link_field, "link_value": obs.link_value,
+                        "matched_identifier": obs.matched_identifier,
+                        "observation": {"timestamp": obs.observed_at, "state": obs.state_hint,
+                                        "evidence_id": obs.evidence_id,
+                                        "source_type": obs.source_type},
+                    }
                 if len(extra_examples.setdefault(category, [])) < 3:
                     extra_examples[category].append({
                         "case_id": case_id, "phase": phase, "operation": operation,
@@ -255,6 +274,49 @@ def evaluate(prediction_path: Path) -> dict[str, Any]:
     print(f"sample_renumbered_sequence_accuracy={renumbered_sequence_correct}/{total} "
           f"({(renumbered_sequence_correct / total if total else 1.0):.3%})")
     print("sample_extra_causes=" + json.dumps(dict(extra_counts), ensure_ascii=True))
+    print("sample_extra_resources=" + json.dumps(
+        list(extra_resource_details.values()), ensure_ascii=True))
+    print("sample_link_type_precision=" + json.dumps([
+        {"link_type": key, "expected_resources": link_expected[key],
+         "observed_resources": link_totals[key],
+         "precision": link_expected[key] / link_totals[key] if link_totals[key] else 1.0}
+        for key in sorted(link_totals)], ensure_ascii=True))
+    activity_times = {row.get("activity_id"): row.get("event_time", "")
+                      for row in loaders.read_activity()}
+    old_activity_expected = []
+    sample_requests_by_id = sample_case_rows
+    for cid, expected_row in case_exp.items():
+        request_time = sample_requests_by_id[cid].get("requested_at", "")
+        for step in json.loads(expected_row["steps_json"]):
+            evidence = step.get("evidence_id", "")
+            event_time = activity_times.get(evidence, "")
+            if evidence.startswith("activity_") and event_time and request_time and event_time < request_time:
+                old_activity_expected.append((cid, evidence, event_time))
+    print(f"sample_expected_steps_from_pre_request_activity={len(old_activity_expected)}")
+    from datetime import datetime, timezone
+    manifest = loaders.read_evidence_manifest()
+    visual_paths = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+    visual_evidence = []
+    for item in manifest:
+        path = loaders.evidence_path(item["file_path"])
+        if path.suffix.casefold() in visual_paths:
+            captured = item.get("captured_at", "")
+            try:
+                parsed = datetime.fromisoformat(captured.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+            except ValueError:
+                parsed = None
+            if parsed:
+                visual_evidence.append((item, parsed))
+    visual_cases = 0
+    for request in loaders.read_requests():
+        audit = datetime.fromisoformat(request["audit_at"].replace("Z", "+00:00"))
+        if audit.tzinfo is None:
+            audit = audit.replace(tzinfo=timezone.utc)
+        if any(captured <= audit for _, captured in visual_evidence):
+            visual_cases += 1
+    print(f"full_evaluation_cases_with_eligible_pdf_or_image={visual_cases}/{len(loaders.read_requests())}")
     for cause, count in extra_counts.most_common():
         print(f"  extra_cause_examples={cause} count={count} " +
               json.dumps(extra_examples.get(cause, []), ensure_ascii=True))

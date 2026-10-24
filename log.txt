@@ -362,3 +362,30 @@ branch=main
 repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+## [2026-10-24T23:41:43+05:30] Audit sample evidence links and temporal discovery
+
+User Prompt (verbatim, secrets redacted):
+1. For each of the 8 sample extras described as "evidence-backed violations omitted by the sample set", print compactly: case_id, resource, operation, the observation, and exactly how the resource was linked to the user (field name, value, matching identifier, evidence_id). Then group them by link type. For each link type, check how often it also appears in resources that ARE in the expected set (precision of that link type across all 32 samples). If a link type is weak (low precision), downgrade it to "unlinked" so it cannot create a finding, rerun, and report status accuracy and with/without step_no metrics before and after. Keep the change only if it does not lower status accuracy. Also report how the full-run counts (COMPLETE / INCOMPLETE / NOT_APPLICABLE) change.
+
+2. For the 2 verification steps from identity-bearing activity before requested_at: report whether any expected step in the 32 samples comes from activity earlier than requested_at. If none does, exclude pre-request activity from resource discovery and report the effect.
+
+3. Count how many of the 518 evaluation cases have at least one eligible evidence file that is a PDF or image (by manifest and audit_at), and list how many cases would be affected by implementing PDF/OCR extraction.
+
+Update PROGRESS.md with a short summary. Print only the before/after metrics, the link-type table, and the PDF/image count. If any change lowers a metric, revert it and say so.
+
+Agent Response Summary:
+Added concrete field/value/identifier provenance for evidence links and sample-wide link-type precision scoring. The violation extras use high-precision evidence link types; the zero-precision activity links occur only before requested_at, and no expected sample step cites such activity, so those events are now excluded. Reran sample evaluation and the full 518-case pipeline, validated output.csv, and updated PROGRESS.md; sample status accuracy did not decrease and full-run status counts did not change.
+
+Actions:
+* Edited code/discovery.py and code/evaluation/evaluate.py
+* Ran python code/evaluation/evaluate.py before and after the temporal rule
+* Ran python code/main.py and python code/validate_output.py
+* Updated PROGRESS.md
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

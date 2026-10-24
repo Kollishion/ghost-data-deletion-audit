@@ -3,7 +3,7 @@
 ## Status
 
 - Loaders and identity resolution: DONE
-- Discovery: IN PROGRESS; now chooses the latest eligible direct state, handles equal-time explicit absence, adds absence observations from scoped empty snapshots for already linked resources, and removes resources explicitly owned by another user.
+- Discovery: IN PROGRESS; now chooses the latest eligible direct state, handles equal-time explicit absence, adds absence observations from scoped empty snapshots for already linked resources, removes resources explicitly owned by another user, records concrete link provenance, and excludes activity before requested_at.
 - Request classifier: DONE; deterministic rules only, request text is the only classifier input
 - Policy: DONE; activity claims remain unresolved and cannot create findings
 - Planner and serializer: DONE
@@ -23,6 +23,9 @@
 - Updated sample scoring: status accuracy 29/32 (90.625%); with step_no precision/recall/F1 50.323% / 40.415% / 44.828%; ignoring step_no (multiset) 92.903% / 74.611% / 82.759%; renumbered sequence accuracy 6/32 (18.750%).
 - Updated aligned field accuracy: 942/1008 (93.452%). The new multiset scorer reports 8 extra steps from grounded policy violations omitted by the sample set, 2 pre-request activity-claim verification steps, and 1 already-compliant absence verification omitted by the sample. No surviving extras link explicitly to another owner; no duplicate resource appears under multiple system IDs.
 - Case 12 classification now uses the record's own `contact_lookup_completed` event and `email_opt_in=true` fields to classify it as a marketing contact record (rule_10, DELETE), not by its `analytics_` resource prefix. This changes the predicted action to REPORT_REMAINING_RECORD / DELETE_RECORD and raises sample exact-step F1 from 42.529% to 44.828%.
+- Link audit over all 32 samples: `content_match` 26/26 expected resources (100%); `structured:email` 10/10 (100%); `current/historical identifier match` 4/5 (80%); activity identity links 0/2 (0%). The eight violation-step extras use only the 100%-precision link types: two `structured:email` steps and six `content_match` steps. Neither evidence-backed link type was downgraded.
+- No expected sample step cites activity earlier than requested_at (0). Excluding pre-request activity removed two verification-only steps; sample status stayed 29/32, exact-step F1 rose 44.828% to 45.087%, and multiset F1 rose 82.759% to 83.237%. Full-run counts stayed COMPLETE 141, INCOMPLETE 367, NOT_APPLICABLE 10; output validation passed.
+- Eligible manifest PDF/image coverage: 488 of 518 evaluation cases have at least one PDF or image captured by audit_at.
 
 ## Remaining mismatches grouped by effect
 
@@ -30,13 +33,13 @@
 - Sequence / discovery (37 expected steps affected): account and analytics resources remain undiscovered in cases 01–04 and 26–28, leaving missing verification steps. In case 03, account_7566 is now correctly ABSENT from the 404/rows=0 completion observation, but analytics_9406 is still undiscovered.
 - Case 12: analytics_9914 is attributable through a correlation key matching the user's email hash. Its own `contact_lookup_completed` and `email_opt_in=true` fields establish a marketing contact record, so rule_10 requires DELETE; this now matches the sample's REPORT_REMAINING_RECORD / DELETE_RECORD.
 - Remaining sample extra-step causes under the six-field multiset score: 8 evidence-backed violations in sample cases that the expected set omits; 2 verification-only resources named by identity-bearing activity before requested_at; 1 compliant ABSENT observation with a verification step omitted by the expected set. Those observations do not justify suppressing a policy violation or treating old activity claims as current state. No ownership or cross-system duplicate cause was found.
-- Aggregate sample sequence failure causes: 81 extra/unsupported predicted steps, 67 step numbering/order mismatches, 37 discovery/system-resource attribution misses, and 15 policy operation/phase mismatches. Explicit other-user ownership elimination did not change the sample score.
+- Aggregate sample sequence failure causes: 75 extra/unsupported predicted steps after excluding pre-request activity, 66 step numbering/order mismatches, 37 discovery/system-resource attribution misses, and 12 policy operation/phase mismatches. Explicit other-user ownership elimination did not change the sample score.
 
 ## Next steps
 
-1. Improve subject-to-resource linkage for cases with only unlinked activity claims, without using case/resource numbering or reported status.
+1. Improve subject-to-resource linkage for cases with only unlinked eligible activity claims, without using case/resource numbering or reported status.
 2. Recover the remaining sample account and analytics resource links, then rerun sample scoring.
-3. Resolve the case_12 expected-action conflict against the participant-facing deletion rule and sample contract.
+3. Add evidence parsing for PDF and image resources, which could affect 488 evaluation cases.
 4. Rerun python code/main.py, python code/validate_output.py, and python code/evaluation/evaluate.py after future pipeline changes.
 
 ## Commands
