@@ -1,0 +1,25 @@
+# secrets (none planned, but just in case)
+.env
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# temporary files Codex makes while exploring
+_explore_*
+spot_out.txt
+
+# packaging output
+code.zip
+agent-trace/
+agent-trace.zip
