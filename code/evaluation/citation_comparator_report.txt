@@ -1,0 +1,45 @@
+﻿case_01: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_02: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_03: latest_direct_id_ascending_tie=3/3 authoritative_direct_then_latest_ascending_tie=3/3 authoritative_direct_then_latest_descending_tie=3/3
+case_04: latest_direct_id_ascending_tie=2/2 authoritative_direct_then_latest_ascending_tie=2/2 authoritative_direct_then_latest_descending_tie=2/2
+case_05: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_06: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_07: latest_direct_id_ascending_tie=0/1 authoritative_direct_then_latest_ascending_tie=0/1 authoritative_direct_then_latest_descending_tie=0/1
+case_08: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_09: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_10: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_11: latest_direct_id_ascending_tie=4/4 authoritative_direct_then_latest_ascending_tie=4/4 authoritative_direct_then_latest_descending_tie=4/4
+case_12: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_13: latest_direct_id_ascending_tie=2/2 authoritative_direct_then_latest_ascending_tie=2/2 authoritative_direct_then_latest_descending_tie=2/2
+case_14: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_15: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_16: latest_direct_id_ascending_tie=2/2 authoritative_direct_then_latest_ascending_tie=2/2 authoritative_direct_then_latest_descending_tie=2/2
+case_17: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+case_18: latest_direct_id_ascending_tie=4/4 authoritative_direct_then_latest_ascending_tie=4/4 authoritative_direct_then_latest_descending_tie=4/4
+case_19: latest_direct_id_ascending_tie=2/2 authoritative_direct_then_latest_ascending_tie=2/2 authoritative_direct_then_latest_descending_tie=2/2
+case_20: latest_direct_id_ascending_tie=2/2 authoritative_direct_then_latest_ascending_tie=2/2 authoritative_direct_then_latest_descending_tie=2/2
+case_21: latest_direct_id_ascending_tie=3/3 authoritative_direct_then_latest_ascending_tie=3/3 authoritative_direct_then_latest_descending_tie=3/3
+case_22: latest_direct_id_ascending_tie=2/2 authoritative_direct_then_latest_ascending_tie=2/2 authoritative_direct_then_latest_descending_tie=2/2
+case_23: latest_direct_id_ascending_tie=2/2 authoritative_direct_then_latest_ascending_tie=2/2 authoritative_direct_then_latest_descending_tie=2/2
+case_24: latest_direct_id_ascending_tie=2/2 authoritative_direct_then_latest_ascending_tie=2/2 authoritative_direct_then_latest_descending_tie=2/2
+case_25: latest_direct_id_ascending_tie=3/3 authoritative_direct_then_latest_ascending_tie=3/3 authoritative_direct_then_latest_descending_tie=3/3
+case_26: latest_direct_id_ascending_tie=6/6 authoritative_direct_then_latest_ascending_tie=6/6 authoritative_direct_then_latest_descending_tie=6/6
+case_27: latest_direct_id_ascending_tie=6/6 authoritative_direct_then_latest_ascending_tie=6/6 authoritative_direct_then_latest_descending_tie=6/6
+case_28: latest_direct_id_ascending_tie=6/6 authoritative_direct_then_latest_ascending_tie=6/6 authoritative_direct_then_latest_descending_tie=6/6
+case_29: latest_direct_id_ascending_tie=4/4 authoritative_direct_then_latest_ascending_tie=4/4 authoritative_direct_then_latest_descending_tie=4/4
+case_30: latest_direct_id_ascending_tie=4/4 authoritative_direct_then_latest_ascending_tie=4/4 authoritative_direct_then_latest_descending_tie=4/4
+case_31: latest_direct_id_ascending_tie=2/3 authoritative_direct_then_latest_ascending_tie=2/3 authoritative_direct_then_latest_descending_tie=2/3
+case_32: latest_direct_id_ascending_tie=1/1 authoritative_direct_then_latest_ascending_tie=1/1 authoritative_direct_then_latest_descending_tie=1/1
+Evidence-bearing steps: 75; non-file expected IDs: {}
+Finding citations: 41/41 use evidence-file IDs; activity_id/audit_id expected uses={}
+Expected citations after audit_at: []
+Expected citations in excluded formats: [('case_07', 'support_001', 'evidence_58', 'pdf')]
+latest_direct_id_ascending_tie: 73/75 = 0.973
+  miss case_07 support_001: expected=evidence_58 chosen=<none> candidates=0
+  miss case_31 account_4857: expected=evidence_51 chosen=evidence_54 candidates=1
+authoritative_direct_then_latest_ascending_tie: 73/75 = 0.973
+  miss case_07 support_001: expected=evidence_58 chosen=<none> candidates=0
+  miss case_31 account_4857: expected=evidence_51 chosen=evidence_54 candidates=1
+authoritative_direct_then_latest_descending_tie: 73/75 = 0.973
+  miss case_07 support_001: expected=evidence_58 chosen=<none> candidates=0
+  miss case_31 account_4857: expected=evidence_51 chosen=evidence_54 candidates=1
