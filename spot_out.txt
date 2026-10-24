@@ -1,0 +1,37 @@
+deletion_requests 518
+sample_deletion_requests 32
+sample_output 32
+deletion_rules 15
+evidence_files 94
+system_activity 4011
+user_audit_log 306
+user_identities 850
+case_05 audit_at=2026-09-08T13:40:00Z | evidence_54 captured=2026-09-02T23:00:00Z | eligible=True
+    account_005 1
+    leila.haddad@yahoo.com 1
+case_19 audit_at=2026-09-15T12:00:00Z | evidence_01 captured=2026-09-15T11:59:39Z | eligible=True
+    search_6083 1
+    support_9553 1
+case_31 audit_at=2026-09-15T12:00:00Z | evidence_51 captured=2026-09-15T12:00:00Z | eligible=True
+    tombstone_440 1
+    audit_record_6909 1
+case_28 audit_at=2026-09-15T12:00:00Z | evidence_92 captured=2026-09-15T11:44:55Z | eligible=True
+    account_5482 1
+    audit_record_9265 1
+    support_2351 1
+    backup_838 2
+{'audit_id': 'audit_121', 'user_id': 'user_10', 'event_time': '2025-12-13T08:17:43Z', 'field_name': 'email', 'old_value': 'nadia.ionescu@yahoo.com', 'new_value': 'nadia.petrescu@yahoo.com'}
+{'audit_id': 'audit_122', 'user_id': 'user_10', 'event_time': '2025-12-13T08:17:43Z', 'field_name': 'email_hash', 'old_value': '708ef5640eec7c7aa89a6dc39793c5df6f9bca6968397f46a8f44ff1bdde75f5', 'new_value': 'e407f542e6f638d23b7efa7c74bacfb3ee6c3991ca6625ad36c8dcb7dffa144a'}
+{'audit_id': 'audit_238', 'user_id': 'user_10', 'event_time': '2026-04-12T14:38:26Z', 'field_name': 'email', 'old_value': 'nadia.petrescu@yahoo.com', 'new_value': 'n.petrescu@yahoo.com'}
+{'audit_id': 'audit_239', 'user_id': 'user_10', 'event_time': '2026-04-12T14:38:26Z', 'field_name': 'email_hash', 'old_value': 'e407f542e6f638d23b7efa7c74bacfb3ee6c3991ca6625ad36c8dcb7dffa144a', 'new_value': '6385b5b5e70720c197abedd379f714bb84330a9c7bc86bbb4bfbc4405bdba326'}
+{'user_id': 'user_10', 'name': 'Nadia Petrescu', 'email': 'n.petrescu@yahoo.com', 'phone': '+40 723 481 638', 'email_hash': '6385b5b5e70720c197abedd379f714bb84330a9c7bc86bbb4bfbc4405bdba326', 'updated_at': '2026-04-12T14:38:26Z'}
+case_533 The mobile number on my profile is out of date. Please replace it with the new one and leave the account active.
+case_534 Please stop the promotional emails. I still need the account and my order history, so I am not asking for deletion.
+case_535 I'd like to download my account information in a portable format. Please keep the account as it is.
+case_536 I can't access my profile and need help resetting the login. Do not close the account.
+case_537 My surname is misspelled on the account. Can you correct it without removing any of my records?
+case_538 Please remove me from marketing lists only. I still want receipts and service messages for this account.
+case_539 Can you tell me what personal information you hold about me? This is an information request, not a request to erase it.
+case_540 I need a copy of last year's invoices for my records. Please leave my profile and purchase history in place.
+case_541 Please change the email address used for this account. I want to continue using the service.
+case_542 Could you send me a copy of the information held on my account? I still use it, so please don't delete or change anything.

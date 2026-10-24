@@ -1,0 +1,60 @@
+﻿## [2026-10-24T13:28:55Z] SESSION START
+
+tool=Codex
+model=GPT-6
+Repo Root: C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+Branch: 
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+## [2026-10-24T13:40:24Z] SESSION START
+
+tool=Codex
+model=GPT-6
+Repo Root: C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+Branch: unknown
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+## [2026-10-24T13:40:24Z] Exploration findings and NOTES.md
+
+User Prompt (verbatim, secrets redacted):
+Read AGENTS.md fully and follow its logging rules exactly (session start entry, per-turn entries, correct tool= and model= values). Then read problem_statement.md.
+
+PROJECT CONSTRAINTS
+- Language: Python. Entry point: python code/main.py reads dataset/ and writes the completed output.csv at the repo root.
+- Fully offline and keyless. No paid or external LLM APIs, no API keys, no .env needed.
+- A local Ollama server (http://localhost:11434) is allowed, but ONLY for interpretation tasks: non-English or ambiguous request_text, and reading screenshots or scanned PDFs. Order of preference: rules and regex first, then OCR/PDF text extraction (pdfplumber/pypdf, pytesseract if available), and Ollama only as a fallback.
+- Core logic must be deterministic plain Python: identity resolution, state reconstruction at audit_at, rule application, status decision, step generation and ordering, JSON serialization.
+- Any Ollama call must use temperature 0, a fixed seed, JSON-schema output, an on-disk cache keyed by content hash, and token logging (prompt_eval_count / eval_count) for evaluation/usage_report.md. The pipeline must still run end to end if Ollama is unavailable.
+- Use only participant-facing files under dataset/. Never use organizer-only files, hardcoded labels, golden answers, or case-family shortcuts. Never use evidence captured after a case's audit_at.
+- Do not touch or reuse any existing boilerplate (frontend/, backend/, references/). Put new code in code/.
+
+THIS TURN IS EXPLORATION ONLY. Do NOT write the solution yet.
+
+1. Read every CSV in dataset/. For each file, report the columns, row count, and the distinct values of every categorical column (system_id, category, action, operation, result, status, event types, etc.).
+2. Print deletion_rules.csv in full and explain every rule in plain language, including how tombstones, retention, redact, anonymize and delete differ.
+3. Count the files under dataset/evidence/ by folder and extension. Show one example of each type (SQL, JSON, log, text record, PDF, image) with its evidence_files.csv manifest row and a summary of its contents.
+4. Pick 6 sample cases (at least 2 COMPLETE, 2 INCOMPLETE, 2 NOT_APPLICABLE). For each, show the request row next to its sample_output.csv row, then explain step by step why that output is correct: identity resolution (current and historical identifiers), which evidence matched, which rule applied to each record, and why each step is in that position.
+5. List the distinct request_text patterns and languages you find, and which ones are non-deletion requests (access, correction, export, marketing opt-out, etc.).
+6. Look for traps: decoy records belonging to other users, evidence captured after audit_at, replicas that disagree, sync jobs that recreate data, restores from backups, and old emails or hashes in the audit log.
+7. Write all findings to NOTES.md at the repo root.
+
+Then stop and ask me before starting any implementation.
+
+Agent Response Summary:
+Read AGENTS.md and problem_statement.md, summarized all nine participant-facing CSVs and their categorical values, printed and explained the 15 deletion rules, counted and inspected representative evidence files, traced sample and non-deletion requests, and documented findings in NOTES.md. The public sample output has no NOT_APPLICABLE rows, so the two required examples are evaluation requests with no corresponding sample_output.csv row; this is stated explicitly. No implementation code was written.
+
+Actions:
+* Read AGENTS.md, problem_statement.md, all dataset CSVs, and representative evidence files.
+* Wrote NOTES.md and removed the temporary rendered PDF preview.
+
+Context:
+tool=Codex
+model=GPT-6
+branch=unknown
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
