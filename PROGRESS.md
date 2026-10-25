@@ -108,6 +108,17 @@ The policy/category fixes and resource/state separation remove all eight prior e
 - Remaining policy/coverage mismatches (6 expected steps affected): principally sample verification resources not surfaced through eligible direct evidence; case_10 still lacks expected account_010 verification.
 - Extra steps: one compliant account_6523 absence verification in case_17 is omitted by the sample.
 
+## Verification-set attribution audit (2026-10-25)
+
+No planner change was justified. `build_plan` evaluates the same discovered observations and policy decisions for both outcomes, and both paths create verification from every decision. The INCOMPLETE path uses empty evidence IDs for future checks; the COMPLETE path cites the observation evidence. There is no path that filters verifications to findings or skips resources linked by user reference.
+
+- `case_113` / `evidence_88`: `account_6697` is linked by `lookup_key=sami-elsayed@gmail.com` matching the request/current identifier; its readback says `rows=0`, `http_status=404`. `audit_record_1127` is linked by both `lookup_key=user_111` and `subject_reference=user_111`, matching the resolved stable user ID; it has one retained row. Both observations are eligible, so COMPLETE has absence and retained-record verification.
+- `case_114` / `evidence_88`: no account or audit record in the trace carries user_112 or its identifiers. The trace does contain `search_5696` with matching `lookup_key`/`email=oadeyemi1657@gmail.com` and `support_3786` with matching `lookup_key`/`requester_email`; both are attributed and produce findings. Account/audit resources are absent from this user's trace, not filtered or dropped by planning.
+- `case_100` / `evidence_89`: no account or audit record carries user_98's identifiers. The relevant records are the search hit and `support_1630` requester email matching a resolved historical/current identifier; discovery and policy produce the findings and verification steps.
+- `case_173` / `evidence_84`: no account/audit record belongs to user_171. `account_8423` has another email; `audit_record_7166` references user_173 and `audit_record_8521` references user_176. These are correctly excluded as other-user records. The matching search and analytics records are discovered through Javier Rodriguez's email and produce findings.
+
+Regression check: sample status accuracy remains 29/32 (90.625%); step precision/recall without `step_no` remains 99.338% / 77.720%; full output remains 518 rows with COMPLETE 141, INCOMPLETE 367, NOT_APPLICABLE 10. Main validation passes with the same 16 warnings. No pipeline behavior changed, so zero cases gain verification steps and zero predicted cases change.
+
 ## Next steps
 
 1. Add PDF/image extraction and link content through identifiers before broadening graph joins.
