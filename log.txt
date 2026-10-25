@@ -556,3 +556,31 @@ branch=main
 repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+## [2026-10-25T11:31:58+05:30] Evaluate activity evidence as absence fallback
+
+User Prompt (verbatim, secrets redacted):
+Experiment only; revert if it does not help. Keep output compact.
+
+1. For sample cases 01, 02, 04 (expected COMPLETE) and every other expected VERIFY_RECORD_ABSENT / VERIFY_* step in sample_output.csv whose evidence_id starts with "activity_" or "audit_": print how many there are, and for each the activity row's event_type, reported_result and whether a LINK_RESOURCE_IDENTITY event ties the resource to the user.
+
+2. If the data shows a consistent pattern (for example a SUCCESS delete activity, linked to the user through LINK_RESOURCE_IDENTITY, is what the expected COMPLETE steps cite), implement it as the LOWEST-priority state evidence: it applies only when no eligible direct observation exists for that resource, any direct observation overrides it, and FAILED or PARTIAL results are never treated as absence. Do not use reported_status. Do not use case_ids or resource numbering.
+
+3. Report before/after on the 32 samples: status accuracy, step precision/recall without step_no, and whether any previously correct case changed. Also report the full-run status counts and how many of the 16 warning cases change. Keep the change only if sample status accuracy improves and no previously correct case gets worse.
+
+4. Rerun main.py and validation, and update PROGRESS.md (rewrite stale numbers in place). Print only the before/after numbers and the pattern you found.
+
+Agent Response Summary:
+No activity-backed absence rule was added because the sample evidence does not show the required pattern: zero expected verification steps cite activity/audit IDs, and none of the related events ties the resources to the users through LINK_RESOURCE_IDENTITY. The case_01 event is SUCCESS but unlinked, case_02 is PARTIAL, and case_04 uses direct evidence files with no matching identity-link event. Re-evaluation was unchanged, the full run validated with warnings only, and PROGRESS.md records the experiment and diagnostics.
+
+Actions:
+* Inspected expected sample verification citations and related eligible activity/link events
+* Ran python code/evaluation/evaluate.py before and after (no code change), python code/main.py, and python code/validate_output.py
+* Updated PROGRESS.md with before/after metrics and the evidence pattern
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
