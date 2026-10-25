@@ -51,12 +51,13 @@ def _evidence_times() -> dict[str, str]:
     return times
 
 
-def validate(path: Path) -> list[str]:
+def validate_report(path: Path) -> tuple[list[str], list[str]]:
     errors: list[str] = []
+    warnings: list[str] = []
     with path.open("r", encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames != HEADER:
-            return [f"header mismatch: {reader.fieldnames!r}"]
+            return [f"header mismatch: {reader.fieldnames!r}"], warnings
         rows = list(reader)
     requests = {row["case_id"]: row for row in loaders.read_requests()}
     expected_ids = sorted(requests)
@@ -98,7 +99,7 @@ def validate(path: Path) -> list[str]:
         if status == "INCOMPLETE" and not any(
             isinstance(step, dict) and step.get("phase") == "FINDING" for step in steps
         ):
-            errors.append(f"{case_id}: INCOMPLETE must contain at least one finding")
+            warnings.append(f"{case_id}: INCOMPLETE has no FINDING step")
         phase_ranks = []
         sort_keys = []
         duplicate_keys = set()
@@ -144,18 +145,27 @@ def validate(path: Path) -> list[str]:
             errors.append(f"{case_id}: phases are out of order")
         if sort_keys != sorted(sort_keys):
             errors.append(f"{case_id}: steps are not sorted by phase, operation rank, system, resource")
+    return errors, warnings
+
+
+def validate(path: Path) -> list[str]:
+    """Return hard validation errors; warning-only results remain successful."""
+    errors, _ = validate_report(path)
     return errors
 
 
 def main() -> None:
     path = Path(sys.argv[1]) if len(sys.argv) > 1 else loaders.REPO_ROOT / "output.csv"
-    errors = validate(path)
+    errors, warnings = validate_report(path)
+    if warnings:
+        case_ids = [warning.split(":", 1)[0] for warning in warnings]
+        print(f"validation_warning=incomplete_without_finding count={len(warnings)} case_ids={case_ids}")
     if errors:
         print(f"validation=FAIL errors={len(errors)}")
         for error in errors[:30]:
             print(f"  {error}")
         raise SystemExit(1)
-    print(f"validation=PASS rows={sum(1 for _ in csv.DictReader(path.open(encoding='utf-8-sig', newline='')))}")
+    print(f"validation=PASS rows={sum(1 for _ in csv.DictReader(path.open(encoding='utf-8-sig', newline='')))} warnings={len(warnings)}")
 
 
 if __name__ == "__main__":

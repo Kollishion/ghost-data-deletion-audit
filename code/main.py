@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 
 try:
@@ -98,19 +99,31 @@ def main() -> None:
         force=True,
     )
     rows = run_requests(loaders.read_requests(), graph_iterations=1)
-    write_output(rows, loaders.REPO_ROOT / "output.csv")
+    output_path = loaders.REPO_ROOT / "output.csv"
+    temp_path = output_path.with_name(f".{output_path.name}.{os.getpid()}.tmp")
+    try:
+        write_output(rows, temp_path)
+        # Publish only a complete CSV. Validation runs after this atomic replace;
+        # a validation failure therefore leaves the complete output available.
+        os.replace(temp_path, output_path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
     from collections import Counter
     print(f"rows={len(rows)} status_counts={dict(sorted(Counter(r['deletion_status'] for r in rows).items()))}")
     try:
-        from .validate_output import validate
+        from .validate_output import validate_report
     except ImportError:
-        from validate_output import validate
-    errors = validate(loaders.REPO_ROOT / "output.csv")
+        from validate_output import validate_report
+    errors, warnings = validate_report(output_path)
+    if warnings:
+        case_ids = [warning.split(":", 1)[0] for warning in warnings]
+        print(f"validation_warning=incomplete_without_finding count={len(warnings)} case_ids={case_ids}")
     if errors:
         for error in errors[:30]:
             print(f"validation_error: {error}")
         raise SystemExit(f"output validation failed ({len(errors)} errors)")
-    print(f"validation=PASS rows={len(rows)}")
+    print(f"validation=PASS rows={len(rows)} warnings={len(warnings)}")
 
 
 if __name__ == "__main__":
