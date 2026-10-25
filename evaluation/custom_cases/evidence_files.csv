@@ -1,0 +1,8 @@
+file_id,file_path,origin,captured_at
+custom_evidence_A,evidence/databases/a_replica_drift.sql,synthetic_replica_snapshot,2026-02-10T11:30:00Z
+custom_evidence_B,evidence/records/b_sync_and_index.json,synthetic_sync_snapshot,2026-02-10T11:40:00Z
+custom_evidence_C,evidence/records/c_support_and_audit.json,synthetic_support_snapshot,2026-02-10T11:45:00Z
+custom_evidence_D,evidence/records/d_decoy.json,synthetic_search_snapshot,2026-02-10T11:50:00Z
+custom_evidence_E,evidence/records/e_restore.json,synthetic_backup_snapshot,2026-02-10T11:55:00Z
+custom_evidence_F_i,evidence/databases/f_after_cutoff.sql,synthetic_replica_snapshot,2026-02-10T12:01:00Z
+custom_evidence_F_ii,evidence/databases/f_at_cutoff.sql,synthetic_replica_snapshot,2026-02-10T12:01:00Z

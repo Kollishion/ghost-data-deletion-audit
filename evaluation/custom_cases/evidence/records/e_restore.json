@@ -1,0 +1,12 @@
+{
+  "records": [
+    {
+      "resource_id": "backup_9034",
+      "user_id": "user_9906",
+      "deletion_block": false,
+      "restore_allowed": true,
+      "restore_candidate_id": "restore_candidate_9906",
+      "restore_candidate_status": "ELIGIBLE"
+    }
+  ]
+}

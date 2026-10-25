@@ -6,8 +6,8 @@
 - Identity resolution: DONE for current and historical identifier values.
 - Discovery: PARTIAL; state observations are cutoff-bounded, evidence links retain field-level provenance, pre-request activity is excluded, linked resource references are separated from the source record's state, and one-hop evidence graph expansion is enabled.
 - Policy mapping: DONE for the participant-facing deletion rules; explicit evidence record categories override resource ID prefixes.
-- Planner, serializer, full-run entry point, evaluator, and validator: DONE.
-- Full run: DONE; output.csv has 518 sorted rows and passes validation.
+- Planner, serializer, evaluator, and validator: DONE. The main entry point now catches per-case errors, writes sanitized errors to `run.log`, and validates output before successful exit.
+- Full run: 518 sorted rows generated. The strict status-consistency validator currently fails for 16 INCOMPLETE cases with no FINDING step; see Guardrail results.
 
 ## Current metrics
 
@@ -24,7 +24,22 @@
 | 2 | 98.701% | 68.468% | 76 / 77 |
 
   Status accuracy stayed 29/32 at every iteration and precision stayed above 90%; production uses one iteration.
-- Full output validation: PASS, 518 rows; COMPLETE 141, INCOMPLETE 367, NOT_APPLICABLE 10. Counts match the prior run.
+- Full output: 518 rows; COMPLETE 141, INCOMPLETE 367, NOT_APPLICABLE 10.
+
+## Guardrail results (2026-10-25)
+
+- Validator coverage: exact header and request IDs/count/order, status and JSON schema, required seven fields and types, allowed phase/operation/state triples, sorting and duplicate keys, consecutive numbering, phase-specific evidence rules, evidence ID existence/cutoff, and status consistency.
+- Current validator result: FAIL (16 status-consistency errors). Cases `case_33`, `case_35`, `case_39`, `case_416`, `case_417`, `case_45`, `case_46`, `case_50`, `case_517`, `case_519`, `case_52`, `case_521`, `case_53`, `case_55`, `case_61`, and `case_63` are INCOMPLETE without a finding. Four have no steps; the others have only future verification checks with empty evidence IDs. These cannot be promoted to COMPLETE without evidence, and no finding is fabricated. `main.py` exits nonzero when this validation fails.
+- Per-case fallback: implemented with sanitized `case_id`/error logging to root `run.log`; no cases required fallback in the latest run.
+- Determinism: PASS; two sequential pipeline runs produced SHA-256 `f9df457a4827c4115e5f9fb8b9f4dfbf56f5f5ef58749f040bf5f1b042982cea`. Both runs exited 1 because the automatic validator correctly caught the same 16 status-consistency errors.
+- Offline scan: source has no localhost:11434, urllib, HTTP client, Ollama client, or network calls. `requests` matches are local request-list variable names.
+- Submission hygiene: PASS; curated code.zip set has 23 files, excludes dataset/env/cache/output-backup artifacts, and includes `README.md`; no API-key/token pattern found.
+
+## Independent custom regression cases (2026-10-25)
+
+- Added `evaluation/custom_cases/` with fictional CSV, JSON, and SQL fixtures for failover replica drift, active sync plus search-index residue, support redaction with a retained audit record, a similar-email decoy, restore risk, cutoff-after and exact-cutoff observations, and a marketing-only opt-out.
+- Added `code/evaluation/run_custom_cases.py`; its expected status and steps are declared in code independently of the pipeline output. It swaps the loader's dataset root only for the duration of the run and clears evidence caches before and after.
+- Result: 8/8 custom cases PASS. No pipeline behavior changes were needed. Exact-boundary evidence is included; post-cutoff evidence is ignored; the decoy is not attributed to the requesting user; retained audit data is verified without deletion; marketing-only request returns NOT_APPLICABLE with no steps.
 
 ## Policy category audit
 

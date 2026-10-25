@@ -1,0 +1,7 @@
+rule_id,data_category,condition,required_action
+custom_rule_profile,USER_PROFILE,Always,DELETE
+custom_rule_index,SEARCH_INDEX_ENTRY,Always,DELETE
+custom_rule_support,SUPPORT_MESSAGE,Subject-only personal identifiers,REDACT
+custom_rule_audit,SECURITY_AUDIT_LOG,Within retention period,RETAIN
+custom_rule_backup,BACKUP_ARCHIVE,Eligible restore path,RESTRICT_RESTORE
+custom_rule_flow,DATA_FLOW,Active synchronization,DISABLE

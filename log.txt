@@ -418,3 +418,115 @@ branch=main
 repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+## [2026-10-25T09:36:53+05:30] SESSION START
+
+tool=Codex
+model=GPT-6
+Repo Root: C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+Branch: main
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+## [2026-10-25T10:09:12+05:30] Add runtime, output, and packaging guardrails
+
+User Prompt (verbatim, secrets redacted):
+Read AGENTS.md and PROGRESS.md first, and follow the AGENTS.md logging rules. Then add guardrails to the pipeline. Do not change discovery or policy behaviour in this task.
+
+1. Per-case safety: in code/main.py, catch any exception for a single case, log case_id and error to a run log (not secrets), and fall back to INCOMPLETE with the findings gathered so far, or an empty-step INCOMPLETE if nothing was gathered. One failing case must never crash the run or drop a row.
+
+2. Automatic validation: main.py must run the output validator at the end and exit with a non-zero code and a clear message if anything fails. The validator must check: exact header; exactly 518 rows matching deletion_requests.csv case IDs, sorted; valid deletion_status; valid JSON array in steps_json; NOT_APPLICABLE rows have []; COMPLETE rows have only VERIFICATION steps, each with a non-empty evidence_id; INCOMPLETE rows have findings, then remediation, then verification, in that phase order; remediation and verification steps in INCOMPLETE rows have empty evidence_id; step_no consecutive from 1; each step has exactly the seven required fields; every operation/state pair is allowed (DELETE_RECORD-ABSENT, REDACT_RECORD-REDACTED, and so on); steps sorted by phase, operation rank, system_id, resource_id; no duplicate (phase, operation, system_id, resource_id) in one case.
+
+3. Evidence cutoff check: for every cited evidence_id, the evidence_files.csv captured_at, or the activity event_time / audit event_time for activity_ and audit_ IDs, must be <= that case's audit_at. Fail validation if not. Also check every cited ID exists.
+
+4. Status consistency check: a COMPLETE case must have no finding steps; an INCOMPLETE case must have at least one finding; both must be reported per case.
+
+5. Determinism: add a script (code/check_determinism.py) that runs the pipeline twice and compares SHA-256 hashes of output.csv. Report the result.
+
+6. Offline check: confirm the final run makes no network calls and does not call Ollama (grep for localhost:11434, requests, urllib, http, and any Ollama client). Report what you find. If Ollama is unused, say so.
+
+7. Submission hygiene script (code/check_submission.py): list what would go into code.zip and fail if it would contain dataset/, .env, __pycache__, .venv, output backups, or any file whose contents look like an API key or token (simple regex). Also check that README.md exists.
+
+Run everything, fix anything that fails, update PROGRESS.md (rewrite stale numbers in place), and print only: validator result, determinism result, offline check result, hygiene result, and any rows that needed the per-case fallback.
+
+Agent Response Summary:
+Implemented per-case exception recovery with sanitized run logging, automatic full-output validation, deterministic hash comparison, and curated code.zip hygiene checks. The output is repeatable and hygiene passes; strict validation finds 16 pre-existing INCOMPLETE rows without findings, so main.py correctly exits nonzero. Discovery and policy behavior were left unchanged, and PROGRESS.md records the limitation and current results.
+
+Actions:
+* Edited code/main.py, code/validate_output.py, code/check_determinism.py, code/check_submission.py, and PROGRESS.md
+* Ran python code/main.py; python code/validate_output.py; python code/check_determinism.py; python code/check_submission.py; Python compilation
+* Searched code for localhost:11434, requests, urllib, http, and Ollama references
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+## [2026-10-25T10:14:56+05:30] SESSION START
+
+tool=Codex
+model=GPT-6
+Repo Root: C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+Branch: main
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+## [2026-10-25T10:17:52+05:30] Add fictional custom regression cases
+
+User Prompt (verbatim, secrets redacted):
+Create evaluation/custom_cases/ with a small fictional dataset (same CSV/JSON/SQL formats as dataset/, with invented names, emails and IDs that do not occur in dataset/) and a runner script code/evaluation/run_custom_cases.py. Cases:
+A) Failover replica drift: primary customer_profiles table has no account_7101, failover table still has the row for this user; snapshot captured before audit_at; reported_status COMPLETE. Expect INCOMPLETE with REPORT_REMAINING_RECORD / DELETE_RECORD / VERIFY_RECORD_ABSENT for account_service/account_7101.
+B) Active sync recreating data: data_flow_8820 enabled with a successful last run, linked to the user; search_7155 present. Expect INCOMPLETE; findings REPORT_ACTIVE_DATA_FLOW and REPORT_REMAINING_RECORD; remediation DISABLE_DATA_FLOW before DELETE_RECORD; verification includes VERIFY_DATA_FLOW_DISABLED and VERIFY_RECORD_ABSENT.
+C) Shared support thread plus retained audit record: support_5530 still exposes the user's email; audit_record_6002 has a retention end after audit_at. Expect INCOMPLETE; REPORT_EXPOSED_PII / REDACT_RECORD / VERIFY_RECORD_REDACTED for the support thread (no DELETE_RECORD for it) and VERIFY_RECORD_PRESENT for the audit record (no deletion step).
+D) Similar-email decoy: two users with emails differing by a suffix (x@example.com vs x.jr@example.com); an index entry exists only for the second user. Expect no finding for the decoy.
+E) Restore risk: backup_9034 with deletion_block=false and an eligible restore candidate. Expect INCOMPLETE; REPORT_RESTORE_RISK / BLOCK_RESTORE / VERIFY_RESTORE_BLOCKED; no DELETE_RECORD for the backup.
+F) Cutoff boundary: the case-A leftover row captured (i) one minute after audit_at, expect no finding from it; (ii) exactly at audit_at, expect it to count.
+G) Marketing opt-out request text ("Please remove me from marketing lists only. I still want my account and receipts."): expect NOT_APPLICABLE and [].
+The runner prints expected vs actual status and steps and a PASS/FAIL line per case. Write the expected outputs in code, independent of the pipeline's output. Do not change pipeline behaviour just to make a case pass unless the pipeline is wrong in a data-grounded way; if a case fails, report why and what is wrong. Update PROGRESS.md and print only the PASS/FAIL table and any failures explained.
+
+Agent Response Summary:
+Added an isolated synthetic fixture dataset and a runner whose expected statuses and ordered steps are declared independently in code. All eight cases pass, including exact versus post-audit cutoff handling, replica drift, data-flow ordering, redaction/retention, decoy attribution, restore protection, and marketing opt-out. Pipeline discovery and policy behavior were unchanged.
+
+Actions:
+* Added evaluation/custom_cases CSV, JSON, and SQL fixtures plus code/evaluation/run_custom_cases.py
+* Updated PROGRESS.md and ran python code/evaluation/run_custom_cases.py and Python compilation
+* Checked the invented IDs and identities against dataset/; no collisions found
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+## [2026-10-25T10:18:13+05:30] Add and run custom regression fixtures
+
+User Prompt (verbatim, secrets redacted):
+Create evaluation/custom_cases/ with a small fictional dataset (same CSV/JSON/SQL formats as dataset/, with invented names, emails and IDs that do not occur in dataset/) and a runner script code/evaluation/run_custom_cases.py. Cases:
+A) Failover replica drift: primary customer_profiles table has no account_7101, failover table still has the row for this user; snapshot captured before audit_at; reported_status COMPLETE. Expect INCOMPLETE with REPORT_REMAINING_RECORD / DELETE_RECORD / VERIFY_RECORD_ABSENT for account_service/account_7101.
+B) Active sync recreating data: data_flow_8820 enabled with a successful last run, linked to the user; search_7155 present. Expect INCOMPLETE; findings REPORT_ACTIVE_DATA_FLOW and REPORT_REMAINING_RECORD; remediation DISABLE_DATA_FLOW before DELETE_RECORD; verification includes VERIFY_DATA_FLOW_DISABLED and VERIFY_RECORD_ABSENT.
+C) Shared support thread plus retained audit record: support_5530 still exposes the user's email; audit_record_6002 has a retention end after audit_at. Expect INCOMPLETE; REPORT_EXPOSED_PII / REDACT_RECORD / VERIFY_RECORD_REDACTED for the support thread (no DELETE_RECORD for it) and VERIFY_RECORD_PRESENT for the audit record (no deletion step).
+D) Similar-email decoy: two users with emails differing by a suffix (x@example.com vs x.jr@example.com); an index entry exists only for the second user. Expect no finding for the decoy.
+E) Restore risk: backup_9034 with deletion_block=false and an eligible restore candidate. Expect INCOMPLETE; REPORT_RESTORE_RISK / BLOCK_RESTORE / VERIFY_RESTORE_BLOCKED; no DELETE_RECORD for the backup.
+F) Cutoff boundary: the case-A leftover row captured (i) one minute after audit_at, expect no finding from it; (ii) exactly at audit_at, expect it to count.
+G) Marketing opt-out request text ("Please remove me from marketing lists only. I still want my account and receipts."): expect NOT_APPLICABLE and [].
+The runner prints expected vs actual status and steps and a PASS/FAIL line per case. Write the expected outputs in code, independent of the pipeline's output. Do not change pipeline behaviour just to make a case pass unless the pipeline is wrong in a data-grounded way; if a case fails, report why and what is wrong. Update PROGRESS.md and print only the PASS/FAIL table and any failures explained.
+
+Agent Response Summary:
+Created eight isolated fictional regression cases and a runner with hand-authored expected outputs independent of generated results. All eight passed, including replica drift, sync ordering, retained records, similar-email attribution, restore blocking, cutoff boundaries, and marketing opt-out. No pipeline behavior changes were made; PROGRESS.md now records the custom regression result.
+
+Actions:
+* Added evaluation/custom_cases fixtures in CSV, JSON, and SQL and code/evaluation/run_custom_cases.py
+* Updated PROGRESS.md
+* Ran python code/evaluation/run_custom_cases.py and Python compilation; verified fixture identifiers are absent from dataset/
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

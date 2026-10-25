@@ -1,0 +1,18 @@
+{
+  "records": [
+    {
+      "resource_id": "data_flow_8820",
+      "user_id": "user_9902",
+      "enabled": true,
+      "last_run_status": "SUCCESS",
+      "last_run_at": "2026-02-08T10:00:00Z",
+      "target_resource_id": "search_7155"
+    },
+    {
+      "resource_id": "search_7155",
+      "user_id": "user_9902",
+      "state": "PRESENT",
+      "indexed_at": "2026-02-08T10:00:01Z"
+    }
+  ]
+}

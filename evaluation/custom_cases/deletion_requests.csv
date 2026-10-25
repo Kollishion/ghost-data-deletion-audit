@@ -1,0 +1,9 @@
+case_id,email,requested_at,reported_status,reported_at,audit_at,request_text
+custom_A,mira.vellin@fablemail.test,2026-02-01T09:00:00Z,COMPLETE,2026-02-09T12:00:00Z,2026-02-10T12:00:00Z,Please delete my account and personal data.
+custom_B,orren.tallis@fablemail.test,2026-02-01T09:00:00Z,COMPLETE,2026-02-09T12:00:00Z,2026-02-10T12:00:00Z,Please delete my account and personal data.
+custom_C,selka.arden@fablemail.test,2026-02-01T09:00:00Z,PARTIALLY_COMPLETE,2026-02-09T12:00:00Z,2026-02-10T12:00:00Z,Please delete my account and personal data.
+custom_D,x@example.com,2026-02-01T09:00:00Z,COMPLETE,2026-02-09T12:00:00Z,2026-02-10T12:00:00Z,Please delete my account and personal data.
+custom_E,vesper.quill@fablemail.test,2026-02-01T09:00:00Z,COMPLETE,2026-02-09T12:00:00Z,2026-02-10T12:00:00Z,Please delete my account and personal data.
+custom_F_i,tarin.morrow@fablemail.test,2026-02-01T09:00:00Z,COMPLETE,2026-02-09T12:00:00Z,2026-02-10T12:00:00Z,Please delete my account and personal data.
+custom_F_ii,elvi.sable@fablemail.test,2026-02-01T09:00:00Z,COMPLETE,2026-02-09T12:00:00Z,2026-02-10T12:01:00Z,Please delete my account and personal data.
+custom_G,nerys.vale@fablemail.test,2026-02-01T09:00:00Z,NOT_STARTED,2026-02-09T12:00:00Z,2026-02-10T12:00:00Z,Please remove me from marketing lists only. I still want my account and receipts.

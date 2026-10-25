@@ -1,0 +1,19 @@
+{
+  "records": [
+    {
+      "resource_id": "support_5530",
+      "user_id": "user_9903",
+      "record_type": "support_thread",
+      "shared": true,
+      "participant_user_ids": ["user_9903", "user_9910"],
+      "email": "selka.arden@fablemail.test",
+      "message_text": "Customer asked about an order."
+    },
+    {
+      "resource_id": "audit_record_6002",
+      "user_id": "user_9903",
+      "event_type": "account_deletion_request",
+      "retention_until": "2026-12-31T23:59:59Z"
+    }
+  ]
+}

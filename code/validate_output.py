@@ -33,6 +33,22 @@ ALLOWED = {
     ("VERIFICATION", "VERIFY_RESTORE_BLOCKED", "BLOCKED"),
 }
 PHASE_RANK = {"FINDING": 0, "REMEDIATION": 1, "VERIFICATION": 2}
+OPERATION_RANK = {
+    "REPORT_REMAINING_RECORD": 0, "REPORT_EXPOSED_PII": 1,
+    "REPORT_ACTIVE_DATA_FLOW": 2, "REPORT_RESTORE_RISK": 3,
+    "DISABLE_DATA_FLOW": 0, "BLOCK_RESTORE": 1, "DELETE_RECORD": 2,
+    "REDACT_RECORD": 3, "ANONYMIZE_RECORD": 4,
+    "VERIFY_RECORD_ABSENT": 0, "VERIFY_RECORD_PRESENT": 1,
+    "VERIFY_RECORD_REDACTED": 2, "VERIFY_RECORD_ANONYMIZED": 3,
+    "VERIFY_DATA_FLOW_DISABLED": 4, "VERIFY_RESTORE_BLOCKED": 5,
+}
+
+
+def _evidence_times() -> dict[str, str]:
+    times = {row["file_id"]: row["captured_at"] for row in loaders.read_evidence_manifest()}
+    times.update({row["activity_id"]: row["event_time"] for row in loaders.read_activity()})
+    times.update({row["audit_id"]: row["event_time"] for row in loaders.read_identity_audit()})
+    return times
 
 
 def validate(path: Path) -> list[str]:
@@ -42,7 +58,10 @@ def validate(path: Path) -> list[str]:
         if reader.fieldnames != HEADER:
             return [f"header mismatch: {reader.fieldnames!r}"]
         rows = list(reader)
-    expected_ids = sorted(row["case_id"] for row in loaders.read_requests())
+    requests = {row["case_id"]: row for row in loaders.read_requests()}
+    expected_ids = sorted(requests)
+    if len(expected_ids) != 518:
+        errors.append(f"deletion_requests.csv has {len(expected_ids)} cases, expected 518")
     actual_ids = [row["case_id"] for row in rows]
     if len(rows) != len(expected_ids):
         errors.append(f"row count {len(rows)} != {len(expected_ids)}")
@@ -54,6 +73,8 @@ def validate(path: Path) -> list[str]:
         missing = sorted(set(expected_ids) - set(actual_ids))
         extra = sorted(set(actual_ids) - set(expected_ids))
         errors.append(f"case_id set mismatch missing={missing[:5]} extra={extra[:5]}")
+
+    evidence_times = _evidence_times()
 
     for row in rows:
         case_id = row["case_id"]
@@ -70,10 +91,26 @@ def validate(path: Path) -> list[str]:
             continue
         if status == "NOT_APPLICABLE" and steps:
             errors.append(f"{case_id}: NOT_APPLICABLE must have []")
+        if status == "COMPLETE" and any(
+            isinstance(step, dict) and step.get("phase") != "VERIFICATION" for step in steps
+        ):
+            errors.append(f"{case_id}: COMPLETE must contain only verification steps")
+        if status == "INCOMPLETE" and not any(
+            isinstance(step, dict) and step.get("phase") == "FINDING" for step in steps
+        ):
+            errors.append(f"{case_id}: INCOMPLETE must contain at least one finding")
         phase_ranks = []
+        sort_keys = []
+        duplicate_keys = set()
+        request = requests.get(case_id)
+        audit_at = request.get("audit_at", "") if request else ""
         for index, step in enumerate(steps, 1):
             if not isinstance(step, dict) or set(step) != set(STEP_FIELDS):
                 errors.append(f"{case_id}: step {index} has invalid fields")
+                continue
+            if (not isinstance(step["step_no"], int) or isinstance(step["step_no"], bool)
+                    or any(not isinstance(step[field], str) for field in STEP_FIELDS[1:])):
+                errors.append(f"{case_id}: step {index} has invalid field types")
                 continue
             if step["step_no"] != index:
                 errors.append(f"{case_id}: step_no is not consecutive at {index}")
@@ -81,13 +118,32 @@ def validate(path: Path) -> list[str]:
             if pair not in ALLOWED:
                 errors.append(f"{case_id}: disallowed phase/operation/state {pair!r}")
             phase_ranks.append(PHASE_RANK.get(step["phase"], -1))
+            sort_keys.append((PHASE_RANK.get(step["phase"], -1),
+                              OPERATION_RANK.get(step["operation"], -1),
+                              step["system_id"], step["resource_id"]))
+            duplicate_key = (step["phase"], step["operation"], step["system_id"], step["resource_id"])
+            if duplicate_key in duplicate_keys:
+                errors.append(f"{case_id}: duplicate step key {duplicate_key!r}")
+            duplicate_keys.add(duplicate_key)
             if status == "COMPLETE" and step["phase"] != "VERIFICATION":
                 errors.append(f"{case_id}: COMPLETE contains a non-verification step")
+            if status == "COMPLETE" and not step["evidence_id"]:
+                errors.append(f"{case_id}: COMPLETE verification has empty evidence_id")
+            if step["phase"] == "FINDING" and not step["evidence_id"]:
+                errors.append(f"{case_id}: finding has empty evidence_id")
             if status == "INCOMPLETE" and step["phase"] in {"REMEDIATION", "VERIFICATION"} \
                     and step["evidence_id"]:
                 errors.append(f"{case_id}: future step contains evidence_id")
+            evidence_id = step["evidence_id"]
+            if evidence_id:
+                if evidence_id not in evidence_times:
+                    errors.append(f"{case_id}: unknown evidence_id {evidence_id!r}")
+                elif evidence_times[evidence_id] > audit_at:
+                    errors.append(f"{case_id}: evidence {evidence_id} is after audit_at")
         if phase_ranks != sorted(phase_ranks):
             errors.append(f"{case_id}: phases are out of order")
+        if sort_keys != sorted(sort_keys):
+            errors.append(f"{case_id}: steps are not sorted by phase, operation rank, system, resource")
     return errors
 
 
