@@ -25,7 +25,7 @@
 
   Status accuracy stayed 29/32 at every iteration and precision stayed above 90%; production uses one iteration.
 - Full output: 518 rows; COMPLETE 141, INCOMPLETE 367, NOT_APPLICABLE 10; validation PASS with 16 warnings and zero hard errors. Plain string case_id sort: first `case_100`–`case_104`; last `case_95`–`case_99`.
-- Activity-backed absence experiment: no rule added. Before/after sample status accuracy 29/32 (90.625%); without-step_no precision 99.338%, recall 77.720%; no predictions/correct cases changed. Full status counts remain COMPLETE 141, INCOMPLETE 367, NOT_APPLICABLE 10; all 16 no-finding warnings remain.
+- Activity-backed absence experiment: no rule added. Repeated before/after sample status accuracy 29/32 (90.625%); without-step_no precision 99.338%, recall 77.720%; no predictions/correct cases changed. Repeated main.py/validation result: 518 rows, COMPLETE 141, INCOMPLETE 367, NOT_APPLICABLE 10; validation PASS with the same 16 warnings and zero hard errors.
 
 Expected-step evidence audit: zero sample VERIFY_* steps cite `activity_` or `audit_` evidence IDs. The four expected verification steps in cases 01, 02, and 04 cite direct evidence files evidence_54/evidence_56. Related activity is not a consistent user-linked pattern: account_001 has DELETE_RECORD/SUCCESS, account_002 has DELETE_RECORD/PARTIAL, account_004 has no corresponding activity row, and analytics_901 has ANONYMIZE_RECORD/SUCCESS. None has a LINK_RESOURCE_IDENTITY event tying that resource to the case user. Therefore no activity-derived absence is grounded; partial/failed activity is not treated as absence.
 

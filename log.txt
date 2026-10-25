@@ -584,3 +584,26 @@ branch=main
 repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+## [2026-10-25T11:42:45+05:30] Repeat activity-evidence experiment checks
+
+User Prompt (verbatim, secrets redacted):
+Experiment only; revert if it does not help. Keep output compact.
+1. For sample cases 01, 02, 04 (expected COMPLETE) and every other expected VERIFY_RECORD_ABSENT / VERIFY_* step in sample_output.csv whose evidence_id starts with "activity_" or "audit_": print how many there are, and for each the activity row's event_type, reported_result and whether a LINK_RESOURCE_IDENTITY event ties the resource to the user.
+2. If the data shows a consistent pattern (for example a SUCCESS delete activity, linked to the user through LINK_RESOURCE_IDENTITY, is what the expected COMPLETE steps cite), implement it as the LOWEST-priority state evidence: it applies only when no eligible direct observation exists for that resource, any direct observation overrides it, and FAILED or PARTIAL results are never treated as absence. Do not use reported_status. Do not use case_ids or resource numbering.
+3. Report before/after on the 32 samples: status accuracy, step precision/recall without step_no, and whether any previously correct case changed. Also report the full-run status counts and how many of the 16 warning cases change. Keep the change only if sample status accuracy improves and no previously correct case gets worse.
+4. Rerun main.py and validation, and update PROGRESS.md (rewrite stale numbers in place). Print only the before/after numbers and the pattern you found.
+
+Agent Response Summary:
+Repeated the sample evaluation and full run. The result is unchanged: no expected verification step cites activity/audit evidence, and related successful activities are not tied to the subject with LINK_RESOURCE_IDENTITY. No rule was added; sample metrics, full status counts, and the same 16 warnings persist.
+
+Actions:
+* Ran python code/evaluation/evaluate.py, python code/main.py, and python code/validate_output.py
+* Updated the current experiment result in PROGRESS.md
+
+Context:
+tool=Codex
+model=GPT-6
+branch=main
+repo_root=C:\Users\abhis\Desktop\Projects\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
